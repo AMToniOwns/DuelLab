@@ -98,7 +98,10 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
 2. **Add cards** from the search panel. Extra Deck monsters go to the Extra Deck automatically.
    Use "→ Side" to move a copy to the Side Deck.
 3. **Assign roles** with "+ Roles" on each card. Custom roles are allowed. The panel on the right
-   counts copies per role in the Main Deck.
+   counts copies per role in the Main Deck. **Suggest roles** offers hand traps and board breakers
+   from a list of well-known cards and searchers from card text ("add … from your Deck to your
+   hand"); you choose which to apply. Starters, extenders and bricks depend on the deck, so they are
+   never suggested.
 4. **Add combo lines** (optional) under the deck: one piece per card you need, and for each piece
    every card that can stand in for it, such as the card itself or its searchers.
 5. **Save.** The deck check lists anything that blocks simulation (for example, fewer than 40 cards).

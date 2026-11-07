@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
 import { DECK_ZONES, type Card, type DeckZone, type ValidationIssue } from '@/api/types'
@@ -25,6 +25,8 @@ import ComboLineEditor from '@/components/ComboLineEditor.vue'
 import ImportReportBanner from '@/components/ImportReportBanner.vue'
 import { useImportReportStore } from '@/stores/importReports'
 import { readYdkFile } from '@/lib/ydkFile'
+import { suggestRoles, type RoleSuggestion } from '@/lib/roleSuggestions'
+import RoleSuggestionsDialog from '@/components/RoleSuggestionsDialog.vue'
 import ModalDialog from '@/components/ModalDialog.vue'
 import ValidationPanel from '@/components/ValidationPanel.vue'
 import { useDeckEditorStore } from '@/stores/deckEditor'
@@ -43,6 +45,28 @@ const editingDetails = ref(false)
 const versionName = ref('')
 const notes = ref('')
 const newRole = ref<Record<number, string>>({})
+
+// One role menu at a time: opening another card's menu closes the previous one, and a click
+// elsewhere or Esc closes it.
+const openRoles = ref<string | null>(null)
+function toggleRolesMenu(key: string): void {
+  openRoles.value = openRoles.value === key ? null : key
+}
+function closeRolesOnOutsideClick(event: MouseEvent): void {
+  if (openRoles.value && !(event.target as Element | null)?.closest('[data-roles-popover]'))
+    openRoles.value = null
+}
+function closeRolesOnEscape(event: KeyboardEvent): void {
+  if (event.key === 'Escape') openRoles.value = null
+}
+onMounted(() => {
+  document.addEventListener('click', closeRolesOnOutsideClick)
+  document.addEventListener('keydown', closeRolesOnEscape)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeRolesOnOutsideClick)
+  document.removeEventListener('keydown', closeRolesOnEscape)
+})
 
 const version = computed(() => editor.versions[props.versionId])
 const rules = computed(() => editor.banRules(props.versionId))
@@ -194,6 +218,29 @@ async function importIntoDraft(event: Event): Promise<void> {
   } catch (e) {
     toasts.error(errorMessage(e))
   }
+}
+
+// Role suggestions for every card in the deck (any zone), skipping roles cards already have.
+const suggestOpen = ref(false)
+const suggestions = computed(() => {
+  const d = draft.value
+  if (!d) return []
+  const cards = [...new Set(d.entries.map((e) => e.cardId))]
+    .map((id) => d.cards[id]!)
+    .filter(Boolean)
+  return suggestRoles(cards, d.roles)
+})
+function applySuggestions(chosen: RoleSuggestion[]): void {
+  if (!draft.value) return
+  for (const s of chosen) {
+    if (!(draft.value.roles[s.cardId] ?? []).includes(s.role))
+      toggleRole(draft.value, s.cardId, s.role)
+  }
+  editor.touched()
+  suggestOpen.value = false
+  toasts.success(
+    `Added ${chosen.length} ${chosen.length === 1 ? 'role' : 'roles'}. Save to keep them.`,
+  )
 }
 
 function discard(): void {
@@ -381,14 +428,21 @@ async function simulate(): Promise<void> {
                     >
                       {{ roleLabel(role) }}
                     </span>
-                    <details class="relative">
-                      <summary
-                        class="cursor-pointer list-none rounded px-1.5 py-0.5 text-[11px] text-accent hover:bg-surface-2"
+                    <div class="relative" data-roles-popover>
+                      <button
+                        type="button"
+                        class="cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-accent hover:bg-surface-2"
+                        :aria-expanded="openRoles === `${zone}:${entry.cardId}`"
+                        aria-haspopup="true"
+                        data-testid="roles-toggle"
+                        @click="toggleRolesMenu(`${zone}:${entry.cardId}`)"
                       >
                         {{ (draft.roles[entry.cardId] ?? []).length ? 'Edit roles' : '+ Roles' }}
-                      </summary>
+                      </button>
                       <div
+                        v-if="openRoles === `${zone}:${entry.cardId}`"
                         class="absolute z-20 mt-1 w-56 rounded-lg border border-line bg-surface p-2 shadow-lg"
+                        data-testid="roles-menu"
                       >
                         <fieldset>
                           <legend class="label">Roles for {{ entry.card.name }}</legend>
@@ -422,7 +476,7 @@ async function simulate(): Promise<void> {
                           <button type="submit" class="btn btn-sm">Add</button>
                         </form>
                       </div>
-                    </details>
+                    </div>
                   </div>
                 </div>
                 <div class="flex items-center gap-1">
@@ -494,7 +548,18 @@ async function simulate(): Promise<void> {
             />
           </div>
           <div class="card p-3">
-            <h2 class="mb-2 text-sm font-semibold">Roles in the Main Deck</h2>
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold">Roles in the Main Deck</h2>
+              <button
+                type="button"
+                class="btn btn-sm"
+                data-testid="suggest-roles"
+                :disabled="draft.entries.length === 0"
+                @click="suggestOpen = true"
+              >
+                Suggest roles
+              </button>
+            </div>
             <p v-if="roleSummary.length === 0" class="text-xs text-ink-muted">
               Label cards as starters, extenders, bricks and so on. Simulations count these labels;
               they are your own classification, not game rules.
@@ -510,6 +575,13 @@ async function simulate(): Promise<void> {
           </div>
         </aside>
       </div>
+
+      <RoleSuggestionsDialog
+        :open="suggestOpen"
+        :suggestions="suggestions"
+        @close="suggestOpen = false"
+        @apply="applySuggestions"
+      />
 
       <ModalDialog
         :open="detailCard !== null"

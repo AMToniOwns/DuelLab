@@ -43,7 +43,7 @@ async function addCopies(page: Page, name: string, copies: number): Promise<void
 
 async function setRole(page: Page, cardName: string, role: string): Promise<void> {
   const row = page.getByTestId(`entry-Main-${cardName}`)
-  const toggle = row.locator('summary')
+  const toggle = row.getByTestId('roles-toggle')
   await toggle.click()
   await row.getByRole('checkbox', { name: role }).check()
   await toggle.click()
