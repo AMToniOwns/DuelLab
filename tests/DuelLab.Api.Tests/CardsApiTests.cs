@@ -120,3 +120,18 @@ public sealed class RoutingTests(DuelLabApiFactory factory) : ApiTestBase(factor
         Assert.Equal("not_found", code);
     }
 }
+
+public sealed class CompressionTests(DuelLabApiFactory factory) : ApiTestBase(factory)
+{
+    [Fact]
+    public async Task JsonResponses_AreCompressedWhenTheClientAccepts()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/cards?pageSize=50");
+        request.Headers.AcceptEncoding.ParseAdd("br");
+
+        var response = await Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("br", response.Content.Headers.ContentEncoding);
+    }
+}
