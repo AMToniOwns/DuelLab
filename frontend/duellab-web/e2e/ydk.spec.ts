@@ -94,3 +94,86 @@ test('import a .ydk file as a deck, export it, and import it again as a version'
   await expect(page.getByRole('heading', { name: /^re-imported/ })).toBeVisible()
   await expect(page.getByTestId('zone-Main')).toContainText('40 cards')
 })
+
+test('load a .ydk file into an existing version from the editor, review, discard or save', async ({
+  page,
+  request,
+}) => {
+  const passcode: Record<string, string> = {}
+  const id: Record<string, number> = {}
+  for (const name of [...MAIN, 'Pot of Prosperity']) {
+    const found = await (await request.get(`/api/cards?search=${encodeURIComponent(name)}`)).json()
+    const c = found.items.find((x: { name: string }) => x.name === name)
+    passcode[name] = String(c.externalId)
+    id[name] = c.id
+  }
+
+  // An existing deck: 12 cards × 3 + 3 Ash + 1 Pot of Prosperity = 40, with Effect Veiler as a starter.
+  const ashId = (await (await request.get('/api/cards?search=Ash%20Blossom')).json()).items[0].id
+  const deck = await (await request.post('/api/decks', { data: { name: 'Editor import' } })).json()
+  const versionId: string = deck.versions[0].id
+  await request.put(`/api/versions/${versionId}/cards`, {
+    data: {
+      cards: [
+        ...MAIN.map((n) => ({ cardId: id[n], zone: 'Main', quantity: 3 })),
+        { cardId: ashId, zone: 'Main', quantity: 3 },
+        { cardId: id['Pot of Prosperity'], zone: 'Main', quantity: 1 },
+      ],
+    },
+  })
+  await request.put(`/api/versions/${versionId}/roles`, {
+    data: { cards: [{ cardId: id['Effect Veiler'], roles: ['Starter'] }] },
+  })
+
+  // The file drops Raigeki and Pot of Prosperity and has 2 more Ash (alternate artwork) instead…
+  const file = [
+    '#main',
+    ...MAIN.filter((n) => n !== 'Raigeki').flatMap((n) => [
+      passcode[n]!,
+      passcode[n]!,
+      passcode[n]!,
+    ]),
+    '14558128',
+    '14558128',
+    '14558128',
+  ].join('\n')
+
+  await page.goto(`/versions/${versionId}/edit`)
+  await expect(page.getByTestId('zone-Main')).toContainText('40 cards')
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page
+    .getByTestId('editor-ydk-file')
+    .setInputFiles({ name: 'updated.ydk', mimeType: 'text/plain', buffer: Buffer.from(file) })
+
+  // …loaded as an unsaved draft: 36 cards, Effect Veiler keeps its role, nothing saved yet.
+  await expect(page.getByTestId('import-report')).toContainText('Imported updated.ydk: 36 Main')
+  await expect(page.getByTestId('import-unsaved')).toBeVisible()
+  await expect(page.getByTestId('zone-Main')).toContainText('36 cards')
+  await expect(page.getByText('● Unsaved changes')).toBeVisible()
+  await expect(
+    page.getByTestId('entry-Main-Effect Veiler').getByText('Starter', { exact: true }),
+  ).toBeVisible()
+  await expect(page.getByTestId('entry-Main-Raigeki')).toHaveCount(0)
+  expect(
+    (await (await request.get(`/api/versions/${versionId}`)).json()).validation.mainCount,
+  ).toBe(40)
+
+  // Discard restores the saved deck.
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByRole('button', { name: 'Discard' }).click()
+  await expect(page.getByTestId('zone-Main')).toContainText('40 cards')
+
+  // Load again and save: now it is stored.
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page
+    .getByTestId('editor-ydk-file')
+    .setInputFiles({ name: 'updated.ydk', mimeType: 'text/plain', buffer: Buffer.from(file) })
+  await expect(page.getByTestId('zone-Main')).toContainText('36 cards')
+  await page.getByTestId('save-deck').click()
+  await expect(page.getByText('All changes saved')).toBeVisible()
+  const saved = await (await request.get(`/api/versions/${versionId}`)).json()
+  expect(saved.validation.mainCount).toBe(36)
+  expect(
+    saved.cards.find((c: { card: { name: string } }) => c.card.name === 'Effect Veiler').roles,
+  ).toEqual(['Starter'])
+})

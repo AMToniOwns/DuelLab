@@ -126,3 +126,12 @@ public sealed record TrimmedCardDto(int CardId, string Name, int Listed, int Kep
 
 /// <summary>A .ydk file to download.</summary>
 public sealed record YdkFileDto(string FileName, string Content);
+
+/// <summary>Request to read a .ydk file without saving anything.</summary>
+public sealed record ResolveYdkRequest(string Content);
+
+/// <summary>A .ydk file's cards resolved against the catalogue, plus the import report. Nothing is saved.</summary>
+public sealed record YdkResolutionDto(IReadOnlyList<ResolvedCardDto> Cards, ImportReportDto Report);
+
+/// <summary>One (card, zone) entry from a .ydk file.</summary>
+public sealed record ResolvedCardDto(CardDto Card, DeckZone Zone, int Quantity);

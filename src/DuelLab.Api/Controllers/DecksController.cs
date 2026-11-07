@@ -28,6 +28,11 @@ public sealed class DecksController(DeckService decks) : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = result.Deck.Id }, result);
     }
 
+    /// <summary>Reads a .ydk file's cards without saving anything (used to load a file into the editor).</summary>
+    [HttpPost("ydk/resolve")]
+    public Task<YdkResolutionDto> ResolveYdk(ResolveYdkRequest request, CancellationToken cancellationToken) =>
+        decks.ResolveYdkAsync(request, cancellationToken);
+
     /// <summary>Adds a version to a deck from a .ydk file's text.</summary>
     [HttpPost("{id:guid}/versions/import")]
     public Task<DeckImportResultDto> ImportVersion(Guid id, ImportYdkVersionRequest request, CancellationToken cancellationToken) =>

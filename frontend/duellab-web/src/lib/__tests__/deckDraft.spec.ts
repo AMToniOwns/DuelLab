@@ -8,6 +8,7 @@ import {
   mainCopiesWithRole,
   moveOne,
   removeOne,
+  replaceCards,
   rolesPayload,
   toggleRole,
   zoneCount,
@@ -125,5 +126,34 @@ describe('deckDraft', () => {
 
     expect(copiesOf(draft, 1)).toBe(3)
     expect(draft.roles[1]).toEqual(['Starter', 'HandTrap'])
+  })
+})
+
+describe('replaceCards (loading a deck file into the draft)', () => {
+  it('replaces the cards, keeps roles of cards that stay, drops the rest, and leaves combo lines', () => {
+    const draft = draftFromVersion(version())
+    addCard(draft, card(1, 'Ash'))
+    addCard(draft, card(2, 'Old'))
+    toggleRole(draft, 1, 'Starter')
+    toggleRole(draft, 2, 'Brick')
+    draft.comboLines.push({
+      name: 'Line',
+      notes: null,
+      pieces: [{ cardIds: [2], roles: [], count: 1 }],
+    })
+
+    const kept = replaceCards(draft, [
+      { card: card(1, 'Ash'), zone: 'Main', quantity: 3 },
+      { card: card(3, 'New', true), zone: 'Extra', quantity: 1 },
+    ])
+
+    expect(kept).toBe(1)
+    expect(draft.entries).toEqual([
+      { cardId: 1, zone: 'Main', quantity: 3 },
+      { cardId: 3, zone: 'Extra', quantity: 1 },
+    ])
+    expect(draft.roles).toEqual({ 1: ['Starter'] })
+    expect(draft.cards[3]?.name).toBe('New')
+    expect(draft.comboLines).toHaveLength(1)
   })
 })

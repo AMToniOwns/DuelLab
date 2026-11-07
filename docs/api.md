@@ -21,6 +21,7 @@ served at `/openapi/v1.json`. There is no authentication (see
 | GET | `/decks` | All decks with version summaries, most recently updated first. |
 | POST | `/decks` | `{ name, format? }` → 201 with the deck and its empty first version (format defaults to TCG Advanced). |
 | POST | `/decks/import` | `{ name, content, format? }`: creates a deck from a .ydk file's text. Returns the deck, its version and an import report. |
+| POST | `/decks/ydk/resolve` | `{ content }`: reads a .ydk file's cards and report **without saving** (the editor uses it to load a file into a draft). |
 | POST | `/decks/{id}/versions/import` | `{ versionName, content }`: adds a version from a .ydk file. |
 | GET | `/versions/{id}/export.ydk` | Downloads the version as a .ydk file. |
 | GET | `/decks/{id}` | One deck. |

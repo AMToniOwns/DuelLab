@@ -17,6 +17,7 @@ import type {
   SimulationRun,
   SimulationRunSummary,
   VersionDetail,
+  YdkResolution,
 } from './types'
 
 /** An error response from the API, carrying its stable problem code. */
@@ -94,6 +95,8 @@ export const api = {
     remove: (id: string) => del(`/api/decks/${id}`),
     importYdk: (name: string, content: string, format: DeckFormat) =>
       post<DeckImportResult>('/api/decks/import', { name, content, format }),
+    /** Reads a .ydk file's cards without saving anything. */
+    resolveYdk: (content: string) => post<YdkResolution>('/api/decks/ydk/resolve', { content }),
     importYdkVersion: (deckId: string, versionName: string, content: string) =>
       post<DeckImportResult>(`/api/decks/${deckId}/versions/import`, { versionName, content }),
     setFormat: (id: string, format: DeckFormat, banlistId: string | null) =>

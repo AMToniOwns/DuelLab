@@ -195,6 +195,20 @@ public sealed class DeckService(
         return new DeckImportResultDto(ToSummary(deck), await ToDetailAsync(deck, version, cancellationToken), report);
     }
 
+    /// <summary>
+    /// Reads a .ydk file and returns its cards and the import report without saving anything, so the
+    /// editor can load it into a draft for the user to review.
+    /// </summary>
+    public async Task<YdkResolutionDto> ResolveYdkAsync(ResolveYdkRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var (entries, report) = await ReadYdkAsync(request.Content, cancellationToken);
+        var used = await cards.GetByIdsAsync(entries.Select(e => e.CardId), cancellationToken);
+        return new YdkResolutionDto(
+            entries.Select(e => new ResolvedCardDto(CardDto.From(used[e.CardId]), e.Zone, e.Quantity)).ToList(),
+            report);
+    }
+
     /// <summary>A version as a .ydk file, using each card's main passcode.</summary>
     public async Task<YdkFileDto> ExportYdkAsync(Guid versionId, CancellationToken cancellationToken)
     {

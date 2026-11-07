@@ -321,3 +321,8 @@ export interface DeckImportResult {
   version: VersionDetail
   report: ImportReport
 }
+
+export interface YdkResolution {
+  cards: { card: Card; zone: DeckZone; quantity: number }[]
+  report: ImportReport
+}

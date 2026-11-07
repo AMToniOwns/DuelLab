@@ -152,6 +152,27 @@ export function addCard(
   return null
 }
 
+/**
+ * Replaces the draft's cards with a deck file's cards (an unsaved change). Roles are kept for cards
+ * that are still in the deck and dropped for the rest; combo lines are left as they are.
+ * Returns how many cards kept their roles.
+ */
+export function replaceCards(
+  draft: DeckDraft,
+  cards: { card: Card; zone: DeckZone; quantity: number }[],
+): number {
+  const ids = new Set(cards.map((c) => c.card.id))
+  const kept: Record<number, string[]> = {}
+  for (const [id, roles] of Object.entries(draft.roles)) {
+    if (ids.has(Number(id)) && roles.length > 0) kept[Number(id)] = roles
+  }
+
+  draft.entries = cards.map((c) => ({ cardId: c.card.id, zone: c.zone, quantity: c.quantity }))
+  for (const c of cards) draft.cards[c.card.id] = c.card
+  draft.roles = kept
+  return Object.keys(kept).length
+}
+
 /** Removes one copy; removes the entry (and the card's roles if it has left the deck) at zero. */
 export function removeOne(draft: DeckDraft, cardId: number, zone: DeckZone): void {
   const index = draft.entries.findIndex((e) => e.cardId === cardId && e.zone === zone)

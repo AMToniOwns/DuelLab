@@ -4,9 +4,14 @@ import type { ImportReport } from '@/api/types'
 
 /** What happened when a .ydk file was imported: counts, plus anything skipped or changed. */
 const props = withDefaults(
-  defineProps<{ report: ImportReport & { fileName: string }; deckErrors?: number }>(),
+  defineProps<{
+    report: ImportReport & { fileName: string }
+    deckErrors?: number
+    unsaved?: boolean
+  }>(),
   {
     deckErrors: 0,
+    unsaved: false,
   },
 )
 defineEmits<{ dismiss: [] }>()
@@ -53,6 +58,11 @@ const attention = computed(() => skipped.value || props.deckErrors > 0)
         </p>
         <p v-for="(w, i) in report.warnings" :key="i" class="text-ink-2">{{ w }}</p>
         <p v-if="!skipped" class="text-ink-2">Every card was recognised.</p>
+        <p v-if="unsaved" class="text-ink-2" data-testid="import-unsaved">
+          Loaded into your draft: review it, then
+          <strong class="font-semibold text-ink">Save</strong> to keep it and run the deck check (or
+          Discard).
+        </p>
         <p v-if="deckErrors > 0" data-testid="import-deck-errors">
           <strong class="font-semibold"
             >{{ deckErrors }} deck-check {{ deckErrors === 1 ? 'problem' : 'problems' }} to

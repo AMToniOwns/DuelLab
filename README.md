@@ -92,8 +92,9 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
 
 1. **My decks → Create an empty deck**, or **Import a .ydk file** (choose the file, check the name,
    pick TCG Advanced or Casual). You land in the editor for the deck's first version. Change the
-   format later on the deck page (Casual, or a pinned list). Each version has **Export .ydk**, and
-   the deck page can **Import .ydk as new version**.
+   format later on the deck page (Casual, or a pinned list). In the editor, **Import .ydk** loads a
+   file into the version as an unsaved change (roles of cards that stay are kept) and **Export
+   .ydk** downloads it; the deck page can also **Import .ydk as new version**.
 2. **Add cards** from the search panel. Extra Deck monsters go to the Extra Deck automatically.
    Use "→ Side" to move a copy to the Side Deck.
 3. **Assign roles** with "+ Roles" on each card. Custom roles are allowed. The panel on the right

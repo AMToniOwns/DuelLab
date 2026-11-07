@@ -134,6 +134,22 @@ public sealed class YdkImportApiTests(DuelLabApiFactory factory) : ApiTestBase(f
         Assert.Equal(0, json["report"]!["imported"]!["side"]!.GetValue<int>());
     }
 
+    [Fact]
+    public async Task Resolve_ReturnsCardsAndReportWithoutSavingAnything()
+    {
+        var before = (await GetAsync<List<DeckSummaryDto>>("/api/decks")).Count;
+        var raigeki = await Passcode("Raigeki");
+
+        var resolved = await PostAsync<YdkResolutionDto>("/api/decks/ydk/resolve", new ResolveYdkRequest($"#main\n{raigeki}\n{raigeki}\n14558128\n!side\n99999999\n"));
+
+        Assert.Equal(before, (await GetAsync<List<DeckSummaryDto>>("/api/decks")).Count);
+        Assert.Equal(2, resolved.Cards.Single(c => c.Card.Name == "Raigeki").Quantity);
+        Assert.Contains(resolved.Cards, c => c.Card.Name == "Ash Blossom & Joyous Spring" && c.Zone == DeckZone.Main);
+        Assert.Equal(1, resolved.Report.AlternateArtworks);
+        Assert.Single(resolved.Report.Unknown);
+        Assert.Equal("import.empty", (await FailAsync(HttpMethod.Post, "/api/decks/ydk/resolve", new ResolveYdkRequest("nothing"))).Code);
+    }
+
     [Theory]
     [InlineData("#main\n99999999\n", "import.no_known_cards")]
     [InlineData("just some text", "import.empty")]

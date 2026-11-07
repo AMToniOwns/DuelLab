@@ -7,6 +7,7 @@ import {
   addCard,
   copiesOf,
   copyLimit,
+  replaceCards,
   mainCopiesWithRole,
   moveOne,
   removeOne,
@@ -23,6 +24,7 @@ import CardSearch from '@/components/CardSearch.vue'
 import ComboLineEditor from '@/components/ComboLineEditor.vue'
 import ImportReportBanner from '@/components/ImportReportBanner.vue'
 import { useImportReportStore } from '@/stores/importReports'
+import { readYdkFile } from '@/lib/ydkFile'
 import ModalDialog from '@/components/ModalDialog.vue'
 import ValidationPanel from '@/components/ValidationPanel.vue'
 import { useDeckEditorStore } from '@/stores/deckEditor'
@@ -169,6 +171,31 @@ async function save(): Promise<void> {
   }
 }
 
+async function importIntoDraft(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !draft.value) return
+  try {
+    const content = await readYdkFile(file)
+    const resolved = await api.decks.resolveYdk(content)
+    if (
+      draft.value.entries.length > 0 &&
+      !window.confirm(
+        `Replace the cards in "${version.value?.versionName}" with ${file.name}? Roles of cards that stay in the deck and combo lines are kept. Nothing is saved until you press Save.`,
+      )
+    ) {
+      return
+    }
+    replaceCards(draft.value, resolved.cards)
+    editor.touched()
+    reports.set(props.versionId, file.name, resolved.report)
+    toasts.show('Loaded the file into your draft. Review it, then Save (or Discard).')
+  } catch (e) {
+    toasts.error(errorMessage(e))
+  }
+}
+
 function discard(): void {
   if (window.confirm('Discard all unsaved changes to this version?'))
     editor.discard(props.versionId)
@@ -201,6 +228,7 @@ async function simulate(): Promise<void> {
         v-if="reports.reports[versionId]"
         :report="reports.reports[versionId]!"
         :deck-errors="dirty ? 0 : issues.filter((i) => i.severity === 'Error').length"
+        :unsaved="dirty"
         @dismiss="reports.dismiss(versionId)"
       />
       <!-- Header -->
@@ -248,6 +276,28 @@ async function simulate(): Promise<void> {
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <label
+            class="btn cursor-pointer"
+            for="editor-ydk-file"
+            title="Replace this version's cards with a .ydk file"
+          >
+            Import .ydk
+          </label>
+          <input
+            id="editor-ydk-file"
+            type="file"
+            accept=".ydk,text/plain"
+            class="sr-only"
+            data-testid="editor-ydk-file"
+            @change="importIntoDraft"
+          />
+          <a
+            :href="api.versions.exportUrl(versionId)"
+            class="btn"
+            download
+            title="Download the last saved version as .ydk"
+            >Export .ydk</a
+          >
           <span v-if="dirty" class="text-sm text-warning" role="status">● Unsaved changes</span>
           <span v-else class="text-sm text-ink-muted" role="status">All changes saved</span>
           <button type="button" class="btn" :disabled="!dirty" @click="discard">Discard</button>
