@@ -22,3 +22,7 @@ dotnet_diagnostic.CA1707.severity = none
 [src/DuelLab.Infrastructure/Persistence/Migrations/**.cs]
 generated_code = true
 dotnet_analyzer_diagnostic.severity = none
+
+[src/DuelLab.Infrastructure/Persistence/SqliteMigrations/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

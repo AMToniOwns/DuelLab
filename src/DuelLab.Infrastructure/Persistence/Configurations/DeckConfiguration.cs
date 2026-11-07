@@ -59,9 +59,9 @@ internal sealed class DeckVersionComboLineConfiguration : IEntityTypeConfigurati
         builder.Property(l => l.Notes).HasMaxLength(DeckRules.MaxNotesLength);
         builder.HasIndex(l => new { l.DeckVersionId, l.Position });
 
-        // Pieces are a small value list that is always read and written with its line: store as jsonb.
+        // Pieces are a small value list that is always read and written with its line: store as JSON
+        // (jsonb on PostgreSQL).
         builder.Property(l => l.Pieces)
-            .HasColumnType("jsonb")
             .HasConversion(
                 pieces => JsonSerializer.Serialize(pieces, Json),
                 json => JsonSerializer.Deserialize<List<ComboPiece>>(json, Json) ?? new List<ComboPiece>(),
@@ -106,7 +106,7 @@ internal sealed class SimulationRunConfiguration : IEntityTypeConfiguration<Simu
         builder.Property(r => r.Id).ValueGeneratedNever();
         builder.Property(r => r.EngineVersion).HasMaxLength(20).IsRequired();
         builder.Property(r => r.DeckSnapshotHash).HasMaxLength(64).IsRequired();
-        builder.Property(r => r.ConfigurationJson).HasColumnType("jsonb").IsRequired();
+        builder.Property(r => r.ConfigurationJson).IsRequired();
 
         // Plain text, not jsonb: results are stored exactly as the engine serialised them.
         builder.Property(r => r.ResultsJson).HasColumnType("text").IsRequired();

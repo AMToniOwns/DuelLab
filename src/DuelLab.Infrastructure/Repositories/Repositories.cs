@@ -51,11 +51,20 @@ internal sealed class CardRepository(DuelLabDbContext db) : ICardRepository
         {
             var pattern = $"%{EscapeLike(search)}%";
             var prefix = $"{EscapeLike(search)}%";
-            query = query
-                .Where(c => EF.Functions.ILike(c.Name, pattern, "\\"))
-                .OrderByDescending(c => EF.Functions.ILike(c.Name, EscapeLike(search), "\\"))
-                .ThenByDescending(c => EF.Functions.ILike(c.Name, prefix, "\\"))
-                .ThenBy(c => c.Name);
+            var exact = EscapeLike(search);
+            query = db.Database.IsNpgsql()
+                ? query
+                    .Where(c => EF.Functions.ILike(c.Name, pattern, "\\"))
+                    .OrderByDescending(c => EF.Functions.ILike(c.Name, exact, "\\"))
+                    .ThenByDescending(c => EF.Functions.ILike(c.Name, prefix, "\\"))
+                    .ThenBy(c => c.Name)
+
+                // SQLite's LIKE is already case-insensitive (for ASCII letters).
+                : query
+                    .Where(c => EF.Functions.Like(c.Name, pattern, "\\"))
+                    .OrderByDescending(c => EF.Functions.Like(c.Name, exact, "\\"))
+                    .ThenByDescending(c => EF.Functions.Like(c.Name, prefix, "\\"))
+                    .ThenBy(c => c.Name);
         }
         else
         {

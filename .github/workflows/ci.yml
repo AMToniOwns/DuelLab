@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -43,10 +44,15 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
       - run: dotnet test --no-build -c Release --logger trx --results-directory TestResults
-      - name: Check migrations are up to date
+      - name: API tests on SQLite (the Windows app's database)
+        run: dotnet test tests/DuelLab.Api.Tests --no-build -c Release
+        env:
+          DUELLAB_TEST_PROVIDER: sqlite
+      - name: Check migrations are up to date (PostgreSQL and SQLite)
         run: |
           dotnet tool restore
-          dotnet ef migrations has-pending-model-changes -p src/DuelLab.Infrastructure -s src/DuelLab.Api --no-build --configuration Release
+          dotnet ef migrations has-pending-model-changes -p src/DuelLab.Infrastructure -s src/DuelLab.Api --context DuelLabDbContext --no-build --configuration Release
+          dotnet ef migrations has-pending-model-changes -p src/DuelLab.Infrastructure -s src/DuelLab.Api --context SqliteDuelLabDbContext --no-build --configuration Release
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -163,3 +169,80 @@ jobs:
           docker tag duellab:ci "$IMAGE:${GITHUB_SHA}"
           docker push "$IMAGE:latest"
           docker push "$IMAGE:${GITHUB_SHA}"
+
+  windows-app:
+    name: Windows app (build, smoke test, package)
+    runs-on: windows-latest
+    needs: [backend, frontend]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/duellab-web/package-lock.json
+      - name: Build DuelLab.exe and the zip
+        shell: pwsh
+        run: ./packaging/windows/build.ps1 -Output dist
+      - name: Smoke-test DuelLab.exe on Windows
+        shell: pwsh
+        run: |
+          $env:DUELLAB_DATA_DIR = Join-Path $env:RUNNER_TEMP 'duellab-data'
+          $env:CardCatalog__Provider = 'File'
+          $env:CardCatalog__FilePath = (Resolve-Path 'tests/fixtures/ygoprodeck-cards.json').Path
+          $app = Start-Process -FilePath 'dist/DuelLab/DuelLab.exe' -ArgumentList '--no-browser' -PassThru `
+            -RedirectStandardOutput "$env:RUNNER_TEMP/duellab.out" -RedirectStandardError "$env:RUNNER_TEMP/duellab.err"
+          $base = 'http://127.0.0.1:5180'
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            try { $ok = (Invoke-RestMethod "$base/health").app -eq 'DuelLab' } catch { Start-Sleep 1 }
+          }
+          if (-not $ok) { Get-Content "$env:RUNNER_TEMP/duellab.out", "$env:RUNNER_TEMP/duellab.err"; throw 'DuelLab.exe did not start' }
+
+          for ($i = 0; $i -lt 30 -and (Invoke-RestMethod "$base/api/cards/status").cardCount -eq 0; $i++) { Start-Sleep 1 }
+          if (-not (Invoke-WebRequest "$base/decks").Content.Contains('<div id="app">')) { throw 'web app not served' }
+          if (-not (Test-Path (Join-Path $env:DUELLAB_DATA_DIR 'duellab.db'))) { throw 'database not created in the data folder' }
+
+          # Import a .ydk (alternate-art Ash Blossom x3 + 37 other copies), then simulate.
+          $codes = @()
+          foreach ($name in 'Effect Veiler','Infinite Impermanence','Dark Magician','Raigeki','Polymerization','Mirror Force','Mystical Space Typhoon','Blue-Eyes White Dragon','Dark Magician Girl','Elemental HERO Neos','Nibiru, the Primal Being','Black Luster Soldier - Envoy of the Beginning','Swords of Revealing Light') {
+            $card = (Invoke-RestMethod "$base/api/cards?search=$([uri]::EscapeDataString($name))").items | Where-Object name -eq $name
+            $codes += @($card.externalId) * 3
+          }
+          $ydk = "#main`r`n" + ((@('14558128') * 3 + $codes[0..36]) -join "`r`n") + "`r`n"
+          $import = Invoke-RestMethod "$base/api/decks/import" -Method Post -ContentType 'application/json' `
+            -Body (@{ name = 'Smoke test'; content = $ydk; format = 'Casual' } | ConvertTo-Json)
+          if ($import.report.imported.main -ne 40 -or $import.report.alternateArtworks -ne 3) { throw "unexpected import: $($import.report | ConvertTo-Json -Depth 5)" }
+          $versionId = $import.version.id
+          $ash = ($import.version.cards | Where-Object { $_.card.name -eq 'Ash Blossom & Joyous Spring' }).card.id
+          Invoke-RestMethod "$base/api/versions/$versionId/roles" -Method Put -ContentType 'application/json' `
+            -Body (@{ cards = @(@{ cardId = $ash; roles = @('Starter') }) } | ConvertTo-Json -Depth 5) | Out-Null
+          $run = Invoke-RestMethod "$base/api/versions/$versionId/simulate" -Method Post -ContentType 'application/json' `
+            -Body (@{ sampleCount = 10000; seed = 1; includeComboLines = $false } | ConvertTo-Json)
+          $starter = ($run.result.scenarios | Where-Object name -eq 'Starter').exact
+          # 3 starters in 40 cards: 1 - C(37,5)/C(40,5) = 0.3375506...
+          if ([math]::Abs($starter - 0.3375506) -gt 0.000001) { throw "unexpected exact value $starter" }
+          Write-Host "Exact P(starter) = $starter"
+
+          # A second launch finds the running copy and exits.
+          $second = Start-Process -FilePath 'dist/DuelLab/DuelLab.exe' -ArgumentList '--no-browser' -PassThru -Wait -NoNewWindow
+          if ($second.ExitCode -ne 0) { throw "second launch exited with $($second.ExitCode)" }
+
+          Stop-Process -Id $app.Id
+          Get-ChildItem dist/DuelLab | Format-Table Name, Length
+          Write-Host ("Zip size: {0:N1} MB" -f ((Get-Item dist/DuelLab-windows.zip).Length / 1MB))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DuelLab-windows
+          path: dist/DuelLab-windows.zip
+      - name: Publish a release for version tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create $env:GITHUB_REF_NAME dist/DuelLab-windows.zip --title "DuelLab $env:GITHUB_REF_NAME" --notes "Unzip, then double-click DuelLab.exe. See README.txt inside the zip."

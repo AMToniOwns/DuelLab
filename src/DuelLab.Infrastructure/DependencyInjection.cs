@@ -21,7 +21,20 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DuelLab")
             ?? throw new InvalidOperationException("Connection string 'DuelLab' is not configured.");
 
-        services.AddDbContext<DuelLabDbContext>(options => options.UseNpgsql(connectionString));
+        // "PostgreSQL" (default: server and Docker) or "Sqlite" (the Windows desktop app).
+        var provider = configuration["Database:Provider"] ?? "PostgreSQL";
+        if (string.Equals(provider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddDbContext<DuelLabDbContext, SqliteDuelLabDbContext>(options => options.UseSqlite(connectionString));
+        }
+        else if (string.Equals(provider, "PostgreSQL", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddDbContext<DuelLabDbContext>(options => options.UseNpgsql(connectionString));
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unknown Database:Provider '{provider}'. Use PostgreSQL or Sqlite.");
+        }
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<DuelLabDbContext>());
         services.AddScoped<IDeckRepository, DeckRepository>();
         services.AddScoped<ICardRepository, CardRepository>();

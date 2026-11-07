@@ -10,7 +10,6 @@ internal sealed class CardConfiguration : IEntityTypeConfiguration<Card>
     {
         builder.ToTable("cards");
         builder.HasKey(c => c.Id);
-        builder.Property(c => c.Id).UseIdentityAlwaysColumn();
         builder.HasIndex(c => c.ExternalId).IsUnique();
         builder.Property(c => c.Name).HasMaxLength(200).IsRequired();
         builder.HasIndex(c => c.Name);
@@ -21,8 +20,7 @@ internal sealed class CardConfiguration : IEntityTypeConfiguration<Card>
         builder.Property(c => c.Archetype).HasMaxLength(100);
         builder.Property(c => c.ImageUrl).HasMaxLength(500);
         builder.Property(c => c.SmallImageUrl).HasMaxLength(500);
-        builder.Property(c => c.AlternateExternalIds).HasColumnType("bigint[]").IsRequired();
-        builder.HasIndex(c => c.AlternateExternalIds).HasMethod("gin");
+        builder.Property(c => c.AlternateExternalIds).IsRequired();
     }
 }
 

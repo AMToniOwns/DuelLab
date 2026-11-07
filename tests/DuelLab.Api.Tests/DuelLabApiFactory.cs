@@ -25,8 +25,18 @@ public class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         Environment.GetEnvironmentVariable("DUELLAB_TEST_POSTGRES")
         ?? "Host=localhost;Port=5432;Username=duellab;Password=duellab;Database=postgres";
 
-    private string ConnectionString =>
-        new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = _databaseName }.ConnectionString;
+    /// <summary>
+    /// "postgres" (default) or "sqlite", from DUELLAB_TEST_PROVIDER. CI runs the suite with both, so the
+    /// server and the Windows desktop app are held to the same behaviour.
+    /// </summary>
+    public static bool UseSqlite =>
+        string.Equals(Environment.GetEnvironmentVariable("DUELLAB_TEST_PROVIDER"), "sqlite", StringComparison.OrdinalIgnoreCase);
+
+    private string SqliteFile => Path.Combine(Path.GetTempPath(), $"{_databaseName}.db");
+
+    private string ConnectionString => UseSqlite
+        ? $"Data Source={SqliteFile}"
+        : new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = _databaseName }.ConnectionString;
 
     /// <summary>The card file the File provider reads; subclasses may point it elsewhere.</summary>
     protected virtual string CardFilePath => FixturePath;
@@ -38,6 +48,7 @@ public class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:DuelLab", ConnectionString);
+        builder.UseSetting("Database:Provider", UseSqlite ? "Sqlite" : "PostgreSQL");
         builder.UseSetting("CardCatalog:Provider", "File");
         builder.UseSetting("CardCatalog:FilePath", CardFilePath);
         builder.UseSetting("CardCatalog:ImportOnStartup", "false");
@@ -56,11 +67,23 @@ public class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await base.DisposeAsync();
         await CleanupAsync();
-        NpgsqlConnection.ClearAllPools();
-        await using var connection = new NpgsqlConnection(AdminConnectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{_databaseName}\" WITH (FORCE)", connection);
-        await command.ExecuteNonQueryAsync();
+        if (UseSqlite)
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            foreach (var file in new[] { SqliteFile, SqliteFile + "-wal", SqliteFile + "-shm" })
+            {
+                File.Delete(file);
+            }
+        }
+        else
+        {
+            NpgsqlConnection.ClearAllPools();
+            await using var connection = new NpgsqlConnection(AdminConnectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{_databaseName}\" WITH (FORCE)", connection);
+            await command.ExecuteNonQueryAsync();
+        }
+
         if (Directory.Exists(_imageCache))
         {
             Directory.Delete(_imageCache, recursive: true);

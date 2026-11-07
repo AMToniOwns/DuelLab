@@ -1,3 +1,4 @@
+using DuelLab.Api;
 using DuelLab.Api.Middleware;
 using DuelLab.Application;
 using DuelLab.Application.Common;
@@ -5,7 +6,24 @@ using DuelLab.Infrastructure;
 using DuelLab.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-var builder = WebApplication.CreateBuilder(args);
+// Desktop mode (the Windows download) serves files from the program's own folder, whatever folder it
+// was started from.
+var desktop = DesktopMode.IsEnabled;
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = desktop ? AppContext.BaseDirectory : null,
+});
+
+string? desktopUrl = null;
+if (desktop)
+{
+    desktopUrl = await DesktopMode.ConfigureAsync(builder, args);
+    if (desktopUrl is null)
+    {
+        return; // Already running: its page was opened.
+    }
+}
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddApplication();
@@ -44,7 +62,7 @@ app.UseResponseCaching();
 
 app.MapOpenApi();
 app.MapGet("/health", async (DuelLabDbContext db, CancellationToken ct) =>
-    await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "healthy" }) : Results.StatusCode(503));
+    await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "healthy", app = "DuelLab" }) : Results.StatusCode(503));
 app.MapControllers();
 
 // Unknown API routes are a 404 problem, never the web app's HTML.
@@ -56,7 +74,13 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
 
-await app.RunAsync();
+await app.StartAsync();
+if (desktopUrl is not null)
+{
+    DesktopMode.OnStarted(desktopUrl, args);
+}
+
+await app.WaitForShutdownAsync();
 
 /// <summary>Entry point; public so integration tests can host the app.</summary>
 public partial class Program;
