@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DuelLab.Api\DuelLab.Api.csproj" />
+    <ProjectReference Include="..\..\src\DuelLab.Infrastructure\DuelLab.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\fixtures\ygoprodeck-cards.json" Link="fixtures\ygoprodeck-cards.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

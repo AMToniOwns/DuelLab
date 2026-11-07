@@ -17,3 +17,8 @@ indent_size = 2
 # Test names use Method_Scenario_ExpectedResult, so underscores are intended there.
 [tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
+
+# EF Core migrations are generated code; do not apply style or quality analyzers to them.
+[src/DuelLab.Infrastructure/Persistence/Migrations/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

@@ -1,8 +1,14 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/DuelLab.Api/DuelLab.Api.csproj" />
+    <Project Path="src/DuelLab.Application/DuelLab.Application.csproj" />
+    <Project Path="src/DuelLab.Domain/DuelLab.Domain.csproj" />
+    <Project Path="src/DuelLab.Infrastructure/DuelLab.Infrastructure.csproj" />
     <Project Path="src/DuelLab.Simulator/DuelLab.Simulator.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/DuelLab.Api.Tests/DuelLab.Api.Tests.csproj" />
+    <Project Path="tests/DuelLab.Domain.Tests/DuelLab.Domain.Tests.csproj" />
     <Project Path="tests/DuelLab.Simulator.Tests/DuelLab.Simulator.Tests.csproj" />
   </Folder>
 </Solution>

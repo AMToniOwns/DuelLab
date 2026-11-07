@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (build + tests)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: duellab
+          POSTGRES_PASSWORD: duellab
+          POSTGRES_DB: duellab
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U duellab"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DUELLAB_TEST_POSTGRES: Host=localhost;Port=5432;Username=duellab;Password=duellab;Database=postgres
+      DOTNET_NOLOGO: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release --logger "trx" --results-directory TestResults
+      - name: Check migrations are up to date
+        run: |
+          dotnet tool restore
+          dotnet ef migrations has-pending-model-changes -p src/DuelLab.Infrastructure -s src/DuelLab.Api --no-build -c Release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: TestResults
