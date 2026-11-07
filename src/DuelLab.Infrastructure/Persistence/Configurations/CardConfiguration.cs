@@ -21,6 +21,8 @@ internal sealed class CardConfiguration : IEntityTypeConfiguration<Card>
         builder.Property(c => c.Archetype).HasMaxLength(100);
         builder.Property(c => c.ImageUrl).HasMaxLength(500);
         builder.Property(c => c.SmallImageUrl).HasMaxLength(500);
+        builder.Property(c => c.AlternateExternalIds).HasColumnType("bigint[]").IsRequired();
+        builder.HasIndex(c => c.AlternateExternalIds).HasMethod("gin");
     }
 }
 

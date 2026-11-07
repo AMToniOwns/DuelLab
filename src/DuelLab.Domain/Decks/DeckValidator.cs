@@ -110,7 +110,7 @@ public static class DeckValidator
                     ValidationSeverity.Error,
                     "deck.banlist",
                     status == BanStatus.Forbidden
-                        ? $"{name} is Forbidden ({banlist.Label}); remove all {copies} {(copies == 1 ? "copy" : "copies")}, or switch the deck to Casual."
+                        ? $"{name} is Forbidden ({banlist.Label}); remove {(copies == 1 ? "it" : $"all {copies} copies")}, or switch the deck to Casual."
                         : $"{name} is {Describe(status)} ({banlist.Label}): at most {allowed} {(allowed == 1 ? "copy" : "copies")} across Main, Extra and Side Deck; this deck has {copies}.",
                     group.Key));
             }

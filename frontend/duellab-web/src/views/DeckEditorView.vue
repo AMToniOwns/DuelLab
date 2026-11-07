@@ -21,6 +21,8 @@ import CardDetail from '@/components/CardDetail.vue'
 import CardImage from '@/components/CardImage.vue'
 import CardSearch from '@/components/CardSearch.vue'
 import ComboLineEditor from '@/components/ComboLineEditor.vue'
+import ImportReportBanner from '@/components/ImportReportBanner.vue'
+import { useImportReportStore } from '@/stores/importReports'
 import ModalDialog from '@/components/ModalDialog.vue'
 import ValidationPanel from '@/components/ValidationPanel.vue'
 import { useDeckEditorStore } from '@/stores/deckEditor'
@@ -30,6 +32,7 @@ const props = defineProps<{ versionId: string }>()
 const router = useRouter()
 const editor = useDeckEditorStore()
 const toasts = useToastStore()
+const reports = useImportReportStore()
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -194,6 +197,12 @@ async function simulate(): Promise<void> {
 <template>
   <AsyncState :loading="loading && !draft" :error="error" @retry="load">
     <div v-if="version && draft" class="space-y-4">
+      <ImportReportBanner
+        v-if="reports.reports[versionId]"
+        :report="reports.reports[versionId]!"
+        :deck-errors="dirty ? 0 : issues.filter((i) => i.severity === 'Error').length"
+        @dismiss="reports.dismiss(versionId)"
+      />
       <!-- Header -->
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">

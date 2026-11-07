@@ -11,6 +11,7 @@ public sealed class Card
         Name = string.Empty;
         Description = string.Empty;
         TypeLine = string.Empty;
+        AlternateExternalIds = [];
     }
 
     /// <summary>Creates a card. Use <see cref="UpdateFrom"/> to refresh it from a later sync.</summary>
@@ -26,6 +27,12 @@ public sealed class Card
 
     /// <summary>The provider's identifier. For Yu-Gi-Oh! this is the card's 8-digit passcode.</summary>
     public long ExternalId { get; private set; }
+
+    /// <summary>
+    /// Other passcodes the same card is known by (alternate artworks). Deck files exported from other
+    /// tools often use these.
+    /// </summary>
+    public long[] AlternateExternalIds { get; private set; }
 
     /// <summary>The card name.</summary>
     public string Name { get; private set; }
@@ -98,6 +105,7 @@ public sealed class Card
         ImageUrl = data.ImageUrl;
         SmallImageUrl = data.SmallImageUrl;
         TcgBanStatus = data.TcgBanStatus;
+        AlternateExternalIds = (data.AlternateExternalIds ?? []).Where(id => id != ExternalId).Distinct().Order().ToArray();
         LastSyncedAt = syncedAt;
     }
 }
@@ -118,4 +126,5 @@ public sealed record CardData(
     int? LinkValue = null,
     string? ImageUrl = null,
     string? SmallImageUrl = null,
-    BanStatus TcgBanStatus = BanStatus.Unlimited);
+    BanStatus TcgBanStatus = BanStatus.Unlimited,
+    IReadOnlyList<long>? AlternateExternalIds = null);

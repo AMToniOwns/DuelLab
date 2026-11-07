@@ -13,6 +13,14 @@ public sealed class VersionsController(DeckService decks, SimulationService simu
     [HttpGet("{id:guid}")]
     public Task<VersionDetailDto> Get(Guid id, CancellationToken cancellationToken) => decks.GetVersionAsync(id, cancellationToken);
 
+    /// <summary>Downloads the version as a .ydk file.</summary>
+    [HttpGet("{id:guid}/export.ydk")]
+    public async Task<IActionResult> ExportYdk(Guid id, CancellationToken cancellationToken)
+    {
+        var file = await decks.ExportYdkAsync(id, cancellationToken);
+        return File(System.Text.Encoding.UTF8.GetBytes(file.Content), "text/plain; charset=utf-8", file.FileName);
+    }
+
     /// <summary>Changes a version's name and notes.</summary>
     [HttpPut("{id:guid}")]
     public Task<VersionDetailDto> Update(Guid id, UpdateVersionRequest request, CancellationToken cancellationToken) =>

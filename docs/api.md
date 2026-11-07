@@ -20,6 +20,9 @@ served at `/openapi/v1.json`. There is no authentication (see
 | --- | --- | --- |
 | GET | `/decks` | All decks with version summaries, most recently updated first. |
 | POST | `/decks` | `{ name, format? }` → 201 with the deck and its empty first version (format defaults to TCG Advanced). |
+| POST | `/decks/import` | `{ name, content, format? }`: creates a deck from a .ydk file's text. Returns the deck, its version and an import report. |
+| POST | `/decks/{id}/versions/import` | `{ versionName, content }`: adds a version from a .ydk file. |
+| GET | `/versions/{id}/export.ydk` | Downloads the version as a .ydk file. |
 | GET | `/decks/{id}` | One deck. |
 | PUT | `/decks/{id}` | Rename: `{ name }`. |
 | PUT | `/decks/{id}/format` | `{ format: "TCG Advanced" \| "Casual", banlistId? }`. `banlistId` pins a TCG Advanced deck to a list snapshot; omit it to follow the current list. |
@@ -38,6 +41,17 @@ maximum, unknown cards or roles. The response's `validation` lists what blocks s
 (`Error`, including Forbidden & Limited violations in TCG Advanced) and what is only advice
 (`Warning`, such as a combo line that uses a card no longer in the Main Deck). The response also has
 the deck's `format`, `banlistId` and a `banlistLabel` naming the list that was applied.
+
+**.ydk import.** Accepts the format used by YGOPRODeck, EDOPro and similar tools: `#main`,
+`#extra` and `!side` sections with one passcode per line. Windows or Unix line endings, a byte-order
+mark, padded headers, comment lines and passcodes without leading zeros are all fine. Passcodes match
+a card's main or **alternate-artwork** passcode. The report (`imported: { main, extra, side }`,
+`unknown`, `trimmed`, `alternateArtworks`, `warnings`) lists passcodes not in the database (skipped),
+cards listed more than 3 times (cut to 3, keeping Main, then Extra, then Side copies) and lines that
+were not passcodes. Banlist and Extra Deck problems are imported as-is and shown by the deck check.
+A zone over its maximum, or a file with no known cards, is rejected (`import.zone_too_large`,
+`import.no_known_cards`, `import.empty`, `import.too_large`). Export writes each card's main
+passcode with leading zeros.
 
 Role keys: `Starter`, `Extender`, `Searcher`, `HandTrap`, `BoardBreaker`, `Brick`, `Custom:<name>`.
 

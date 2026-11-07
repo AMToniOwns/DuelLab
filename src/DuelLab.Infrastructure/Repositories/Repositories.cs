@@ -79,6 +79,33 @@ internal sealed class CardRepository(DuelLabDbContext db) : ICardRepository
 
     public void AddRange(IEnumerable<Card> cards) => db.Cards.AddRange(cards);
 
+    public async Task<Dictionary<long, Card>> FindByPasscodesAsync(IReadOnlyCollection<long> passcodes, CancellationToken cancellationToken)
+    {
+        var codes = passcodes.Distinct().ToArray();
+        if (codes.Length == 0)
+        {
+            return [];
+        }
+
+        var matches = await db.Cards
+            .Where(c => codes.Contains(c.ExternalId) || c.AlternateExternalIds.Any(a => codes.Contains(a)))
+            .ToListAsync(cancellationToken);
+
+        var result = new Dictionary<long, Card>();
+        foreach (var card in matches)
+        {
+            foreach (var code in card.AlternateExternalIds.Append(card.ExternalId).Where(codes.Contains))
+            {
+                result[code] = card;
+            }
+        }
+
+        return result;
+    }
+
+    public Task<bool> AnyWithAlternatePasscodesAsync(CancellationToken cancellationToken) =>
+        db.Cards.AnyAsync(c => c.AlternateExternalIds.Length > 0, cancellationToken);
+
     public async Task<List<(int CardId, BanStatus Status)>> GetListedStatusesAsync(CancellationToken cancellationToken) =>
         (await db.Cards.AsNoTracking()
             .Where(c => c.TcgBanStatus != BanStatus.Unlimited)

@@ -7,6 +7,7 @@ import type {
   CatalogStatus,
   Comparison,
   DeckFormat,
+  DeckImportResult,
   DeckSummary,
   DeckZone,
   PagedResult,
@@ -91,6 +92,10 @@ export const api = {
     create: (name: string) => post<DeckSummary>('/api/decks', { name }),
     rename: (id: string, name: string) => put<DeckSummary>(`/api/decks/${id}`, { name }),
     remove: (id: string) => del(`/api/decks/${id}`),
+    importYdk: (name: string, content: string, format: DeckFormat) =>
+      post<DeckImportResult>('/api/decks/import', { name, content, format }),
+    importYdkVersion: (deckId: string, versionName: string, content: string) =>
+      post<DeckImportResult>(`/api/decks/${deckId}/versions/import`, { versionName, content }),
     setFormat: (id: string, format: DeckFormat, banlistId: string | null) =>
       put<DeckSummary>(`/api/decks/${id}/format`, { format, banlistId }),
     createVersion: (deckId: string, versionName: string, sourceVersionId?: string | null) =>
@@ -104,6 +109,8 @@ export const api = {
     update: (id: string, versionName: string, notes: string | null) =>
       put<VersionDetail>(`/api/versions/${id}`, { versionName, notes }),
     remove: (id: string) => del(`/api/versions/${id}`),
+    /** A link that downloads the version as a .ydk file. */
+    exportUrl: (id: string) => `/api/versions/${id}/export.ydk`,
     saveCards: (id: string, cards: { cardId: number; zone: DeckZone; quantity: number }[]) =>
       put<VersionDetail>(`/api/versions/${id}/cards`, { cards }),
     saveRoles: (id: string, cards: { cardId: number; roles: string[] }[]) =>

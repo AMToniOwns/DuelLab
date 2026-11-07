@@ -18,6 +18,9 @@ to locals.
   decks cannot be simulated, and the editor will not add a copy past the limit); Casual decks skip
   it. DuelLab keeps a dated history of the list from each import, and a deck can follow the current
   list or be pinned to an earlier one.
+- **.ydk import and export**: create a deck (or a new version) from a `.ydk` file from
+  YGOPRODeck, EDOPro and similar tools, alternate artworks included, with a report of anything
+  skipped; export any version back to `.ydk`.
 - **Versions**: duplicate a version to experiment; the original never changes. Unsaved edits
   survive navigation and page reloads.
 - **Roles**: label cards as Starter, Extender, Searcher, Hand trap, Board breaker, Brick or any custom
@@ -87,8 +90,10 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
 
 ## Using DuelLab
 
-1. **My decks → Create deck.** You land in the editor for the deck's first version. Decks start in
-   TCG Advanced; change the format on the deck page (Casual, or a pinned list).
+1. **My decks → Create an empty deck**, or **Import a .ydk file** (choose the file, check the name,
+   pick TCG Advanced or Casual). You land in the editor for the deck's first version. Change the
+   format later on the deck page (Casual, or a pinned list). Each version has **Export .ydk**, and
+   the deck page can **Import .ydk as new version**.
 2. **Add cards** from the search panel. Extra Deck monsters go to the Extra Deck automatically.
    Use "→ Side" to move a copy to the Side Deck.
 3. **Assign roles** with "+ Roles" on each card. Custom roles are allowed. The panel on the right

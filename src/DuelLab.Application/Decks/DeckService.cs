@@ -161,6 +161,119 @@ public sealed class DeckService(
         return await ToDetailAsync(deck, version, cancellationToken);
     }
 
+    /// <summary>Creates a deck with one version from a .ydk file.</summary>
+    public async Task<DeckImportResultDto> ImportYdkAsync(ImportYdkRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var (entries, report) = await ReadYdkAsync(request.Content, cancellationToken);
+
+        var now = time.GetUtcNow();
+        var deck = Deck.Create(request.Name, now);
+        if (request.Format is not null)
+        {
+            deck.SetFormat(request.Format, null, now);
+        }
+
+        var version = deck.Versions[0];
+        version.ReplaceCards(entries, now);
+        decks.Add(deck);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return new DeckImportResultDto(ToSummary(deck), await ToDetailAsync(deck, version, cancellationToken), report);
+    }
+
+    /// <summary>Adds a version to an existing deck from a .ydk file. Other versions are not changed.</summary>
+    public async Task<DeckImportResultDto> ImportYdkVersionAsync(Guid deckId, ImportYdkVersionRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var deck = await LoadDeckAsync(deckId, cancellationToken);
+        var (entries, report) = await ReadYdkAsync(request.Content, cancellationToken);
+
+        var now = time.GetUtcNow();
+        var version = deck.AddEmptyVersion(request.VersionName, now);
+        version.ReplaceCards(entries, now);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return new DeckImportResultDto(ToSummary(deck), await ToDetailAsync(deck, version, cancellationToken), report);
+    }
+
+    /// <summary>A version as a .ydk file, using each card's main passcode.</summary>
+    public async Task<YdkFileDto> ExportYdkAsync(Guid versionId, CancellationToken cancellationToken)
+    {
+        var (deck, version) = await LoadVersionAsync(versionId, cancellationToken);
+        var used = await cards.GetByIdsAsync(version.Cards.Select(c => c.CardId), cancellationToken);
+        var content = Ydk.Write(version.Cards
+            .Where(c => used.ContainsKey(c.CardId))
+            .OrderBy(c => used[c.CardId].Kind)
+            .ThenBy(c => used[c.CardId].Name, StringComparer.OrdinalIgnoreCase)
+            .Select(c => (used[c.CardId].ExternalId, c.Zone, c.Quantity)));
+
+        var invalid = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|']).ToHashSet();
+        var name = new string($"{deck.Name} - {version.VersionName}".Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray()).Trim();
+        return new YdkFileDto($"{name}.ydk", content);
+    }
+
+    /// <summary>
+    /// Turns a .ydk file into card entries: resolves passcodes (including alternate artworks), skips
+    /// unknown ones, and cuts any card listed more than 3 times to 3 (keeping Main, then Extra, then
+    /// Side copies). Everything else, including banlist and Extra Deck problems, is kept for the
+    /// normal deck check to report.
+    /// </summary>
+    private async Task<(List<DeckCardEntry> Entries, ImportReportDto Report)> ReadYdkAsync(string content, CancellationToken cancellationToken)
+    {
+        var file = Ydk.Parse(content ?? string.Empty);
+        var zones = new[] { DeckZone.Main, DeckZone.Extra, DeckZone.Side };
+        var found = await cards.FindByPasscodesAsync(zones.SelectMany(file.In).ToList(), cancellationToken);
+
+        var unknown = zones
+            .SelectMany(z => file.In(z).Where(p => !found.ContainsKey(p)).GroupBy(p => p).Select(g => new UnknownPasscodeDto(g.Key, z, g.Count())))
+            .ToList();
+        var alternate = zones.SelectMany(file.In).Count(p => found.TryGetValue(p, out var c) && c.ExternalId != p);
+
+        var remaining = new Dictionary<int, int>();
+        var listed = new Dictionary<int, int>();
+        var entries = new List<DeckCardEntry>();
+        foreach (var zone in zones)
+        {
+            foreach (var group in file.In(zone).Where(found.ContainsKey).GroupBy(p => found[p].Id))
+            {
+                var wanted = group.Count();
+                listed[group.Key] = listed.GetValueOrDefault(group.Key) + wanted;
+                var left = remaining.TryGetValue(group.Key, out var r) ? r : DeckRules.MaxCopiesPerCard;
+                var kept = Math.Min(wanted, left);
+                remaining[group.Key] = left - kept;
+                if (kept > 0)
+                {
+                    entries.Add(new DeckCardEntry(group.Key, zone, kept));
+                }
+            }
+        }
+
+        var names = found.Values.DistinctBy(c => c.Id).ToDictionary(c => c.Id, c => c.Name);
+        var trimmed = listed
+            .Where(kv => kv.Value > DeckRules.MaxCopiesPerCard)
+            .Select(kv => new TrimmedCardDto(kv.Key, names[kv.Key], kv.Value, DeckRules.MaxCopiesPerCard))
+            .ToList();
+
+        foreach (var zone in zones)
+        {
+            var count = entries.Where(e => e.Zone == zone).Sum(e => e.Quantity);
+            if (count > DeckRules.MaxSize(zone))
+            {
+                throw new RequestValidationException(
+                    "import.zone_too_large",
+                    $"The file's {zone} Deck has {count} cards; the maximum is {DeckRules.MaxSize(zone)}.");
+            }
+        }
+
+        if (entries.Count == 0)
+        {
+            throw new RequestValidationException("import.no_known_cards", "None of the file's passcodes are in the card database.");
+        }
+
+        int Count(DeckZone zone) => entries.Where(e => e.Zone == zone).Sum(e => e.Quantity);
+        var imported = new ZoneCountsDto(Count(DeckZone.Main), Count(DeckZone.Extra), Count(DeckZone.Side));
+        return (entries, new ImportReportDto(imported, unknown, trimmed, alternate, file.Warnings));
+    }
+
     /// <summary>Loads a version and its deck, or throws <see cref="NotFoundException"/>.</summary>
     internal async Task<(Deck Deck, DeckVersion Version)> LoadVersionAsync(Guid versionId, CancellationToken cancellationToken)
     {

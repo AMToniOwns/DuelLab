@@ -307,3 +307,17 @@ export interface Comparison {
   roleChanges: RoleChange[]
   comboLineChanges: ComboLineChange[]
 }
+
+export interface ImportReport {
+  imported: { main: number; extra: number; side: number }
+  unknown: { passcode: number; zone: DeckZone; copies: number }[]
+  trimmed: { cardId: number; name: string; listed: number; kept: number }[]
+  alternateArtworks: number
+  warnings: string[]
+}
+
+export interface DeckImportResult {
+  deck: DeckSummary
+  version: VersionDetail
+  report: ImportReport
+}

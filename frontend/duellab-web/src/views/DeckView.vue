@@ -7,11 +7,14 @@ import { dateTime, percent, relativeTime } from '@/lib/format'
 import AsyncState from '@/components/AsyncState.vue'
 import { useDeckEditorStore } from '@/stores/deckEditor'
 import { useToastStore } from '@/stores/toasts'
+import { useImportReportStore } from '@/stores/importReports'
+import { nameFromFileName, readYdkFile } from '@/lib/ydkFile'
 
 const props = defineProps<{ deckId: string }>()
 const router = useRouter()
 const toasts = useToastStore()
 const editor = useDeckEditorStore()
+const reports = useImportReportStore()
 
 const deck = ref<DeckSummary | null>(null)
 const history = ref<Record<string, SimulationRunSummary[]>>({})
@@ -98,6 +101,23 @@ async function duplicate(version: VersionSummary): Promise<void> {
   }
 }
 
+async function importVersion(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const content = await readYdkFile(file)
+    const name = window.prompt('Name for the imported version:', nameFromFileName(file.name))
+    if (!name) return
+    const result = await api.decks.importYdkVersion(props.deckId, name, content)
+    reports.set(result.version.id, file.name, result.report)
+    await router.push({ name: 'editor', params: { versionId: result.version.id } })
+  } catch (e) {
+    toasts.error(errorMessage(e))
+  }
+}
+
 async function addEmpty(): Promise<void> {
   const newName = window.prompt(
     'Name for the new, empty version:',
@@ -174,6 +194,17 @@ watch(() => props.deckId, load)
         </div>
         <div class="flex gap-2">
           <button type="button" class="btn" @click="addEmpty">New empty version</button>
+          <label class="btn cursor-pointer" for="ydk-version-file"
+            >Import .ydk as new version</label
+          >
+          <input
+            id="ydk-version-file"
+            type="file"
+            accept=".ydk,text/plain"
+            class="sr-only"
+            data-testid="ydk-version-file"
+            @change="importVersion"
+          />
           <RouterLink
             v-if="deck.versions.length >= 2"
             class="btn"
@@ -233,6 +264,13 @@ watch(() => props.deckId, load)
               <button type="button" class="btn btn-sm" @click="duplicate(version)">
                 Duplicate
               </button>
+              <a
+                :href="api.versions.exportUrl(version.id)"
+                class="btn btn-sm"
+                download
+                :data-testid="`export-${version.versionName}`"
+                >Export .ydk</a
+              >
               <button
                 type="button"
                 class="btn btn-sm btn-danger"

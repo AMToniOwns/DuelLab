@@ -20,6 +20,19 @@ public sealed class DecksController(DeckService decks) : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = deck.Id }, deck);
     }
 
+    /// <summary>Creates a deck from a .ydk file's text.</summary>
+    [HttpPost("import")]
+    public async Task<ActionResult<DeckImportResultDto>> Import(ImportYdkRequest request, CancellationToken cancellationToken)
+    {
+        var result = await decks.ImportYdkAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(Get), new { id = result.Deck.Id }, result);
+    }
+
+    /// <summary>Adds a version to a deck from a .ydk file's text.</summary>
+    [HttpPost("{id:guid}/versions/import")]
+    public Task<DeckImportResultDto> ImportVersion(Guid id, ImportYdkVersionRequest request, CancellationToken cancellationToken) =>
+        decks.ImportYdkVersionAsync(id, request, cancellationToken);
+
     /// <summary>One deck with its versions.</summary>
     [HttpGet("{id:guid}")]
     public Task<DeckSummaryDto> Get(Guid id, CancellationToken cancellationToken) => decks.GetAsync(id, cancellationToken);

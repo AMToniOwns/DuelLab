@@ -53,7 +53,7 @@ async function setRole(page: Page, cardName: string, role: string): Promise<void
 test('build, simulate, reproduce, duplicate and compare a deck', async ({ page }) => {
   // Create a deck: lands in the editor for its first version.
   await page.goto('/decks')
-  await page.getByLabel('New deck').fill('E2E Test Deck')
+  await page.getByLabel('Create an empty deck').fill('E2E Test Deck')
   await page.getByRole('button', { name: 'Create deck' }).click()
   await expect(page.getByRole('heading', { name: /^v1/ })).toBeVisible()
 
@@ -138,7 +138,7 @@ test('build, simulate, reproduce, duplicate and compare a deck', async ({ page }
 
 test('invalid decks cannot be simulated', async ({ page }) => {
   await page.goto('/decks')
-  await page.getByLabel('New deck').fill('Too small')
+  await page.getByLabel('Create an empty deck').fill('Too small')
   await page.getByRole('button', { name: 'Create deck' }).click()
   await addCopies(page, 'Raigeki', 3)
   await page.getByTestId('save-deck').click()

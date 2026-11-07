@@ -77,6 +77,10 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<int>("Id"));
 
+                    b.PrimitiveCollection<long[]>("AlternateExternalIds")
+                        .IsRequired()
+                        .HasColumnType("bigint[]");
+
                     b.Property<string>("Archetype")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -143,6 +147,10 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AlternateExternalIds");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("AlternateExternalIds"), "gin");
 
                     b.HasIndex("ExternalId")
                         .IsUnique();

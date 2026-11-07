@@ -41,6 +41,12 @@ public interface ICardRepository
     /// <summary>Adds new cards.</summary>
     void AddRange(IEnumerable<Card> cards);
 
+    /// <summary>Cards by passcode, matching main and alternate-artwork passcodes. Unknown codes are left out.</summary>
+    Task<Dictionary<long, Card>> FindByPasscodesAsync(IReadOnlyCollection<long> passcodes, CancellationToken cancellationToken);
+
+    /// <summary>Whether any card has alternate-artwork passcodes (false for imports made before they were stored).</summary>
+    Task<bool> AnyWithAlternatePasscodesAsync(CancellationToken cancellationToken);
+
     /// <summary>The (card id, status) of every card whose TCG status is not Unlimited.</summary>
     Task<List<(int CardId, BanStatus Status)>> GetListedStatusesAsync(CancellationToken cancellationToken);
 }

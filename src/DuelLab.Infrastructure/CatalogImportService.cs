@@ -33,6 +33,12 @@ internal sealed partial class CatalogImportService(
             {
                 await catalog.SyncAsync(force: true, stoppingToken);
             }
+            else if (!await scope.ServiceProvider.GetRequiredService<ICardRepository>().AnyWithAlternatePasscodesAsync(stoppingToken))
+            {
+                // Cards imported before alternate-artwork passcodes were stored: refresh once so deck
+                // files that use them (.ydk imports) are recognised.
+                await catalog.SyncAsync(force: true, stoppingToken);
+            }
             else
             {
                 // Installs that imported cards before list history existed get a first snapshot from

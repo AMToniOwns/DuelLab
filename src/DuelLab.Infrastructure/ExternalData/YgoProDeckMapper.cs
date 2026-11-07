@@ -65,7 +65,8 @@ internal static class YgoProDeckMapper
                 "Limited" => BanStatus.Limited,
                 "Semi-Limited" => BanStatus.SemiLimited,
                 _ => BanStatus.Unlimited,
-            }));
+            },
+            AlternateExternalIds: (card.CardImages ?? []).Select(i => i.Id).Where(id => id > 0 && id != card.Id).Distinct().ToList()));
     }
 
     // YGOPRODeck reports "?" ATK/DEF as -1.
