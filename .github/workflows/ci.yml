@@ -123,24 +123,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build (and on main, publish) the image
+      - name: Image name (registry paths must be lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/duellab" >> "$GITHUB_ENV"
+      - name: Build the image
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: ghcr.io/${{ github.repository_owner }}/duellab:latest,ghcr.io/${{ github.repository_owner }}/duellab:${{ github.sha }}
+          load: true
+          tags: duellab:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke-test the image
         run: |
-          docker build -t duellab:ci .
           docker network create duellab
           docker run -d --name db --network duellab -e POSTGRES_USER=duellab -e POSTGRES_PASSWORD=duellab -e POSTGRES_DB=duellab postgres:16
           for i in $(seq 1 30); do docker exec db pg_isready -U duellab && break; sleep 2; done
@@ -151,4 +145,21 @@ jobs:
           curl -sf localhost:8080/health
           curl -sf localhost:8080/ | grep -q '<div id="app">'
           curl -sf localhost:8080/decks | grep -q '<div id="app">'   # SPA fallback
-          docker logs app
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/nope)" = 404
+      - name: Show app logs
+        if: always()
+        run: docker logs app || true
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker tag duellab:ci "$IMAGE:latest"
+          docker tag duellab:ci "$IMAGE:${GITHUB_SHA}"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${GITHUB_SHA}"
