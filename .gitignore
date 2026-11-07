@@ -480,3 +480,9 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# DuelLab runtime data (downloaded card images) and test output
+data/
+**/data/card-images/
+frontend/duellab-web/test-results/
+frontend/duellab-web/playwright-report/

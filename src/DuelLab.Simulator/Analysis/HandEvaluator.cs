@@ -79,14 +79,14 @@ internal sealed class HandEvaluator
     {
         var parts = scenario.Requirements.Select(r =>
         {
-            var role = RoleLabel(r.Role);
+            string Role(int n) => RoleLabel(r.Role, plural: n != 1);
             return r.MaximumCount switch
             {
-                null => $"at least {r.MinimumCount} {role}",
-                0 when r.MinimumCount == 0 => $"no {role}",
-                { } max when max == r.MinimumCount => $"exactly {max} {role}",
-                { } max when r.MinimumCount == 0 => $"at most {max} {role}",
-                { } max => $"{r.MinimumCount}–{max} {role}",
+                null => $"at least {r.MinimumCount} {Role(r.MinimumCount)}",
+                0 when r.MinimumCount == 0 => $"no {Role(0)}",
+                { } max when max == r.MinimumCount => $"exactly {max} {Role(max)}",
+                { } max when r.MinimumCount == 0 => $"at most {max} {Role(max)}",
+                { } max => $"{r.MinimumCount}–{max} {Role(max)}",
             };
         }).ToList();
 
@@ -104,13 +104,22 @@ internal sealed class HandEvaluator
         return text.ToString();
     }
 
-    internal static string RoleLabel(string roleKey) => roleKey switch
+    internal static string RoleLabel(string roleKey, bool plural = false)
     {
-        "HandTrap" => "hand trap",
-        "BoardBreaker" => "board breaker",
-        _ when roleKey.StartsWith("Custom:", StringComparison.Ordinal) => $"\"{roleKey["Custom:".Length..]}\"",
-        _ => roleKey.ToLower(CultureInfo.InvariantCulture),
-    };
+        if (roleKey.StartsWith("Custom:", StringComparison.Ordinal))
+        {
+            // Custom names are the user's own words; quote them and leave them unchanged.
+            return $"\"{roleKey["Custom:".Length..]}\" {(plural ? "cards" : "card")}";
+        }
+
+        var label = roleKey switch
+        {
+            "HandTrap" => "hand trap",
+            "BoardBreaker" => "board breaker",
+            _ => roleKey.ToLower(CultureInfo.InvariantCulture),
+        };
+        return plural ? label + "s" : label;
+    }
 
     private int CountMatching(ulong roleMask, ReadOnlySpan<int> groupCounts)
     {

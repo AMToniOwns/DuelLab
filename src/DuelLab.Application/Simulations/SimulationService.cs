@@ -118,7 +118,7 @@ public sealed class SimulationService(
         var run = await runs.GetAsync(runId, cancellationToken) ?? throw new NotFoundException("Simulation", runId);
         var stored = ReadConfiguration(run);
         var reproduced = Execute(stored.Configuration, stored.Snapshot);
-        var identical = JsonSerializer.Serialize(reproduced, JsonDefaults.Options) == run.ResultsJson;
+        var identical = OutcomesJson(reproduced) == OutcomesJson(ReadResult(run));
 
         return new ReproductionDto(
             identical,
@@ -279,6 +279,15 @@ public sealed class SimulationService(
         var canonical = string.Join(';', snapshot.MainDeck.Select(c => $"{c.CardId}x{c.Quantity}[{string.Join(',', c.Roles)}]"));
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
+
+    /// <summary>
+    /// The results without their prose descriptions: reproduction checks that every count, probability
+    /// and sample hand matches exactly, while wording improvements never invalidate old runs.
+    /// </summary>
+    private static string OutcomesJson(AnalysisResult result) =>
+        JsonSerializer.Serialize(
+            result with { Scenarios = result.Scenarios.Select(s => s with { Description = string.Empty }).ToList() },
+            JsonDefaults.Options);
 
     private static StoredConfiguration ReadConfiguration(SimulationRun run) =>
         JsonSerializer.Deserialize<StoredConfiguration>(run.ConfigurationJson, JsonDefaults.Options)

@@ -36,10 +36,14 @@ app.MapGet("/health", async (DuelLabDbContext db, CancellationToken ct) =>
     await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "healthy" }) : Results.StatusCode(503));
 app.MapControllers();
 
-// In production the built Vue app is copied into wwwroot and served from the same origin.
+// Unknown API routes are a 404 problem, never the web app's HTML.
+app.Map("/api/{**path}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Not found", extensions: new Dictionary<string, object?> { ["code"] = "not_found" }));
+
+// In production the built Vue app is copied into wwwroot and served from the same origin; any other
+// path falls back to index.html so client-side routes (e.g. /decks/123) work on reload.
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.MapFallbackToFile("index.html").Add(b => ((RouteEndpointBuilder)b).Order = int.MaxValue);
+app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
 

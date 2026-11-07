@@ -76,8 +76,7 @@ internal sealed class SimulationRunConfiguration : IEntityTypeConfiguration<Simu
         builder.Property(r => r.DeckSnapshotHash).HasMaxLength(64).IsRequired();
         builder.Property(r => r.ConfigurationJson).HasColumnType("jsonb").IsRequired();
 
-        // Plain text, not jsonb: reproduction compares results byte-for-byte, and jsonb would
-        // reformat the document.
+        // Plain text, not jsonb: results are stored exactly as the engine serialised them.
         builder.Property(r => r.ResultsJson).HasColumnType("text").IsRequired();
         builder.HasIndex(r => new { r.DeckVersionId, r.CreatedAt });
         builder.HasIndex(r => r.CreatedAt);

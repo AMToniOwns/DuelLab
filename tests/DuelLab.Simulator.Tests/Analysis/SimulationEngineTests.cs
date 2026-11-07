@@ -255,10 +255,13 @@ public sealed class SimulationEngineTests
         var result = _engine.Run(Request(Deck(40), [
             new Scenario("x", [new RoleRequirement("Starter"), new RoleRequirement("Extender")], RequireDistinctCards: true),
             new Scenario("y", [new RoleRequirement("Brick", 0, 0)]),
+            new Scenario("z", [new RoleRequirement("Starter", 2), new RoleRequirement("Custom:Fusion line", 0, 1)], RequireDistinctCards: false),
         ], samples: 10));
 
+        Assert.Equal("Hand contains at least 2 starters AND at most 1 \"Fusion line\" card (one card can count toward several roles)", result.Scenarios[2].Description);
+
         Assert.Equal("Hand contains at least 1 starter AND at least 1 extender (each minimum met by different cards)", result.Scenarios[0].Description);
-        Assert.Equal("Hand contains no brick", result.Scenarios[1].Description);
+        Assert.Equal("Hand contains no bricks", result.Scenarios[1].Description);
     }
 
     public static TheoryData<string, AnalysisRequest> InvalidRequests()

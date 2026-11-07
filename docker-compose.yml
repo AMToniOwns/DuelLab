@@ -1,0 +1,38 @@
+# Local or single-server deployment: PostgreSQL + DuelLab.
+#   docker compose up --build        → http://localhost:8080
+#
+# DuelLab has no user accounts yet. The app port is bound to 127.0.0.1 so it is not exposed to
+# your network; put it behind an authenticating reverse proxy before making it reachable.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: duellab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-duellab}
+      POSTGRES_DB: duellab
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U duellab -d duellab"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    image: duellab:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DuelLab: Host=db;Port=5432;Database=duellab;Username=duellab;Password=${POSTGRES_PASSWORD:-duellab}
+    ports:
+      - "127.0.0.1:${DUELLAB_PORT:-8080}:8080"
+    volumes:
+      - app-data:/app/data
+
+volumes:
+  db-data:
+  app-data:

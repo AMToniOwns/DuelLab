@@ -3,6 +3,7 @@ using DuelLab.Application.Decks;
 using DuelLab.Application.Simulations;
 using DuelLab.Domain.Decks;
 using DuelLab.Simulator.Analysis;
+using Microsoft.EntityFrameworkCore;
 
 namespace DuelLab.Api.Tests;
 
@@ -181,5 +182,27 @@ public sealed class SimulationsApiTests(DuelLabApiFactory factory) : ApiTestBase
         var response = await Client.GetAsync("/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+}
+
+public sealed class ReproductionTamperTests(DuelLabApiFactory factory) : ApiTestBase(factory)
+{
+    [Fact]
+    public async Task Reproduce_DetectsChangedOutcomesButIgnoresDescriptionWording()
+    {
+        var (_, version) = await CreateLegalDeckAsync();
+        var run = await PostAsync<SimulationRunDto>($"/api/versions/{version.Id}/simulate", new SimulationConfigDto(SampleCount: 500, Seed: 3));
+
+        // Reword a description: still identical.
+        await Factory.WithDbAsync(db => db.Database.ExecuteSqlRawAsync(
+            "UPDATE simulation_runs SET \"ResultsJson\" = replace(\"ResultsJson\", 'Hand contains', 'The hand holds') WHERE \"Id\" = {0}", run.Id));
+        Assert.True((await PostAsync<ReproductionDto>($"/api/simulations/{run.Id}/reproduce", null)).Identical);
+
+        // Change an outcome: detected.
+        var successes = run.Result.Scenarios[0].Successes;
+        await Factory.WithDbAsync(db => db.Database.ExecuteSqlRawAsync(
+            "UPDATE simulation_runs SET \"ResultsJson\" = replace(\"ResultsJson\", {1}, {2}) WHERE \"Id\" = {0}",
+            run.Id, $"\"successes\":{successes},", $"\"successes\":{successes + 1},"));
+        Assert.False((await PostAsync<ReproductionDto>($"/api/simulations/{run.Id}/reproduce", null)).Identical);
     }
 }

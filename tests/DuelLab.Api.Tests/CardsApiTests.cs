@@ -106,3 +106,17 @@ public sealed class CardsApiTests(DuelLabApiFactory factory) : ApiTestBase(facto
         Assert.Equal("cards.sync_too_soon", code);
     }
 }
+
+public sealed class RoutingTests(DuelLabApiFactory factory) : ApiTestBase(factory)
+{
+    [Theory]
+    [InlineData("/api/nope")]
+    [InlineData("/api/decks/not-a-guid")]
+    public async Task UnknownApiRoutes_AreNotFoundProblems(string url)
+    {
+        var (status, code, _) = await FailAsync(HttpMethod.Get, url);
+
+        Assert.Equal(HttpStatusCode.NotFound, status);
+        Assert.Equal("not_found", code);
+    }
+}

@@ -1,70 +1,115 @@
 # DuelLab
 
-A personal Yu-Gi-Oh! TCG deck-building and **consistency-analysis** web application: build a deck,
-simulate thousands of opening hands, and see how consistent it is before you play it.
+A personal Yu-Gi-Oh! TCG deck builder and **opening-hand consistency analyser**. Build a deck, label
+your starters, extenders and bricks, simulate thousands of opening hands, see the **exact**
+probabilities next to the simulated ones, and compare two versions of a deck before you take it
+to locals.
 
-> **Status:** TASK 001 done. The opening-hand engine (`DuelLab.Simulator`) and its unit tests are
-> in place. The API, persistence, card catalogue and UI are not started yet.
+![CI](https://github.com/AMToniOwns/DuelLab/actions/workflows/ci.yml/badge.svg)
 
-## Repository layout
+## What it does
 
-```text
-DuelLab/
-├── src/
-│   └── DuelLab.Simulator/          # Sampling algorithms; no dependency on the UI or database
-│       └── Algorithms/HandSimulator.cs
-├── tests/
-│   └── DuelLab.Simulator.Tests/    # xUnit tests, including statistical checks
-├── docs/adr/                       # Architecture Decision Records
-├── Directory.Build.props           # Shared compiler/analyzer settings (warnings are errors)
-├── global.json                     # Pins the .NET 10 SDK feature band
-└── DuelLab.slnx
-```
+- **Card database**: the full TCG card list (about 14,000 cards) imported from
+  [YGOPRODeck](https://ygoprodeck.com/api-guide/) and searched locally. Card art is downloaded once
+  and served by DuelLab, as the provider requires.
+- **Deck builder**: Main (40–60), Extra (0–15) and Side (0–15) Deck; the 3-copy rule across all
+  zones; Extra Deck placement checks; the provider's Forbidden & Limited snapshot shown as a warning.
+- **Versions**: duplicate a version to experiment; the original never changes. Unsaved edits
+  survive navigation and page reloads.
+- **Roles**: label cards as Starter, Extender, Searcher, Hand trap, Board breaker, Brick or any custom
+  role. A card can have several.
+- **Simulator**: seeded, reproducible Monte Carlo draws (100 to 100,000 hands) for any set of
+  scenarios ("at least 1 starter AND at least 1 extender, from different cards", "no bricks", ...),
+  with 95% confidence intervals, **exact probabilities**, per-card opening odds and sample hands.
+- **History and reproduction**: every run stores its configuration and a snapshot of the deck, can
+  be re-run and verified to give identical results, and warns if the deck changed since.
+- **Comparison**: runs two versions with the same settings and seed, and shows the change in
+  percentage points for each scenario, plus which cards and roles changed.
 
-The full target structure (Api / Application / Domain / Infrastructure / Simulator, plus the Vue
-frontend) is described in the project specification. Each project is added when the milestone that
-needs it starts.
+DuelLab measures how often a hand contains the cards *you* labelled. It does not decide whether a
+hand can complete a combo. See [statistical assumptions and limitations](docs/statistics.md).
 
-## Prerequisites
-
-- .NET 10 SDK (10.0.100 or later in the 10.0 feature bands)
-
-## Build and test
+## Run it with Docker
 
 ```bash
-dotnet build
-dotnet test
+docker compose up --build
 ```
 
-## The opening-hand engine
+Then open http://localhost:8080. On first start the app imports the card list (one request to
+YGOPRODeck, a few seconds). Data lives in Docker volumes (`db-data`, `app-data`).
 
-```csharp
-var simulator = new HandSimulator();
-var random = new Random(12345);                 // a seed makes the draw reproducible
-IReadOnlyList<CardCopy> hand = simulator.Draw(deck, handSize: 5, random);
-```
+DuelLab has **no user accounts**. Compose binds it to `127.0.0.1` only; put it behind an
+authenticating reverse proxy before exposing it to a network. See [deployment](docs/deployment.md).
 
-- `deck` is a list of **physical card copies**. Three copies of a card are three elements.
-- Cards are drawn **without replacement** using a partial Fisher–Yates shuffle.
-- The input deck is **never modified**.
-- `handSize` must be between `0` and `deck.Count`. Anything else throws `ArgumentOutOfRangeException`.
-- The same seed and the same deck order give the same hand. Drawing many hands from one `Random`
-  instance gives the same *sequence* of hands.
+## Develop locally
 
-See [ADR 0002](docs/adr/0002-hand-sampling-algorithm-and-randomness.md) for the design decisions.
+Prerequisites: .NET 10 SDK, Node.js 22.18+, PostgreSQL 16+.
 
-## Statistical assumptions and limitations
+1. Create the database user (once):
 
-- Every physical card copy in the deck is equally likely to be in any hand position. Opening hands
-  are uniform random samples without replacement, the setting in which hypergeometric probabilities
-  apply.
-- The engine draws cards. It does not decide whether a hand is "good". Role-based conditions
-  (starters, extenders, bricks) come later, and they will never be presented as proof that a hand
-  can complete a real combo.
-- Reproducibility currently depends on `System.Random`'s seeded algorithm. See ADR 0002 for the
-  caveat.
+   ```bash
+   sudo -u postgres psql -c "CREATE ROLE duellab LOGIN PASSWORD 'duellab' CREATEDB;" -c "CREATE DATABASE duellab OWNER duellab;"
+   ```
 
-## Architecture decisions
+2. Start the API on http://localhost:5080. It applies migrations and imports cards on first start.
 
-- [ADR 0001 – Modular monolith on .NET 10 LTS](docs/adr/0001-modular-monolith-on-dotnet-10.md)
-- [ADR 0002 – Hand sampling algorithm and source of randomness](docs/adr/0002-hand-sampling-algorithm-and-randomness.md)
+   ```bash
+   dotnet run --project src/DuelLab.Api --launch-profile http
+   ```
+
+3. Start the web app on http://localhost:5173. It proxies `/api` to the API.
+
+   ```bash
+   cd frontend/duellab-web && npm ci && npm run dev
+   ```
+
+To work offline, use the bundled card fixture instead of YGOPRODeck: set
+`CardCatalog__Provider=File` and `CardCatalog__FilePath=tests/fixtures/ygoprodeck-cards.json`.
+
+## Tests
+
+| Suite | Command | Needs |
+| --- | --- | --- |
+| Domain, simulator, API integration (xUnit) | `dotnet test` | PostgreSQL (`DUELLAB_TEST_POSTGRES` to override) |
+| Frontend unit and component (Vitest) | `cd frontend/duellab-web && npx vitest run` | – |
+| End-to-end (Playwright, Chromium) | `cd frontend/duellab-web && npx playwright test` | .NET, PostgreSQL |
+
+The API tests create a throwaway database per test class and never touch the network. CI
+(`.github/workflows/ci.yml`) runs all three suites, checks for missing migrations, and builds,
+smoke-tests and publishes the Docker image to GHCR from `main`.
+
+## Using DuelLab
+
+1. **My decks → Create deck.** You land in the editor for the deck's first version.
+2. **Add cards** from the search panel. Extra Deck monsters go to the Extra Deck automatically.
+   Use "→ Side" to move a copy to the Side Deck.
+3. **Assign roles** with "+ Roles" on each card. Custom roles are allowed. The panel on the right
+   counts copies per role in the Main Deck.
+4. **Save.** The deck check lists anything that blocks simulation (for example, fewer than 40 cards).
+5. **Simulate.** Pick the number of hands, the hand size (5 going first, 6 to include the first
+   draw going second) and optionally a seed. Edit or add scenarios, then run.
+6. **Read the results.** Bars show the simulated share; the black tick is the exact probability; the
+   whisker is the 95% interval. The table has every number. "Reproduce" re-runs the saved
+   configuration and confirms the results are identical.
+7. **Experiment.** On the deck page, "Duplicate" a version, change ratios, save, and use
+   "Compare latest two" (or **Compare**) to see the change in percentage points.
+
+## Documentation
+
+- [Architecture](docs/architecture.md): projects, boundaries and request flow
+- [API reference](docs/api.md): endpoints, payloads and error codes (OpenAPI at `/openapi/v1.json`)
+- [Statistics](docs/statistics.md): what is measured, exact vs simulated, assumptions and limitations
+- [Deployment](docs/deployment.md): Docker, configuration, backups
+- Architecture Decision Records:
+  - [0001 – Modular monolith on .NET 10 LTS](docs/adr/0001-modular-monolith-on-dotnet-10.md)
+  - [0002 – Hand sampling algorithm and source of randomness](docs/adr/0002-hand-sampling-algorithm-and-randomness.md)
+  - [0003 – Own seeded random generator](docs/adr/0003-own-seeded-random-generator.md)
+  - [0004 – Scenario semantics and exact probabilities](docs/adr/0004-scenario-semantics-and-exact-probabilities.md)
+  - [0005 – Card data: bulk import from YGOPRODeck](docs/adr/0005-card-data-bulk-import.md)
+  - [0006 – Versions, snapshots and reproducible runs](docs/adr/0006-versions-snapshots-and-reproducible-runs.md)
+  - [0007 – Single-image deployment without accounts](docs/adr/0007-single-image-deployment-without-accounts.md)
+
+## Credits
+
+Card data and images: [YGOPRODeck](https://ygoprodeck.com/). Yu-Gi-Oh! is a trademark of Konami.
+DuelLab is an unofficial fan tool.

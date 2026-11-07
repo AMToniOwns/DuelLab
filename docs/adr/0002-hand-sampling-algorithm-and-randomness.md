@@ -1,6 +1,6 @@
 # ADR 0002 – Hand sampling algorithm and source of randomness
 
-- **Status:** Accepted
+- **Status:** Accepted. The randomness risk below is resolved by [ADR 0003](0003-own-seeded-random-generator.md).
 - **Date:** 2026-11-07
 
 ## Context
