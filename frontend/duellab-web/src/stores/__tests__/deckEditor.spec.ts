@@ -54,17 +54,19 @@ describe('deckEditor store', () => {
     expect(reloaded.draft('v1')!.entries).toHaveLength(2)
   })
 
-  it('saves cards then roles and becomes clean', async () => {
+  it('saves cards, then roles, then combo lines and becomes clean', async () => {
     const calls: string[] = []
+    let roles: string[] = []
     mockFetch((url, init) => {
       calls.push(`${init?.method ?? 'GET'} ${url}`)
       if (url.endsWith('/roles')) {
         const body = JSON.parse(String(init?.body)) as {
           cards: { cardId: number; roles: string[] }[]
         }
-        return version([
-          { card: card(1, 'Ash'), zone: 'Main', quantity: 1, roles: body.cards[0]?.roles ?? [] },
-        ])
+        roles = body.cards[0]?.roles ?? []
+      }
+      if (url.endsWith('/roles') || url.endsWith('/combos')) {
+        return version([{ card: card(1, 'Ash'), zone: 'Main', quantity: 1, roles }])
       }
       return saved
     })
@@ -78,9 +80,24 @@ describe('deckEditor store', () => {
       'GET /api/versions/v1',
       'PUT /api/versions/v1/cards',
       'PUT /api/versions/v1/roles',
+      'PUT /api/versions/v1/combos',
     ])
     expect(store.isDirty('v1')).toBe(false)
     expect(store.draft('v1')!.roles[1]).toEqual(['Starter'])
+  })
+
+  it('refuses to save invalid combo lines before calling the server', async () => {
+    const fetch = mockFetch(() => saved)
+    const store = useDeckEditorStore()
+    await store.load('v1')
+    store.draft('v1')!.comboLines.push({
+      name: 'Line',
+      notes: null,
+      pieces: [{ cardIds: [], roles: [], count: 1 }],
+    })
+
+    await expect(store.save('v1')).rejects.toThrow(/needs at least one card or role/)
+    expect(fetch).toHaveBeenCalledTimes(1) // only the initial load
   })
 
   it('discards back to the saved state', async () => {

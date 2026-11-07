@@ -1,6 +1,6 @@
 # ADR 0004 – Scenario semantics and exact probabilities
 
-- **Status:** Accepted
+- **Status:** Accepted; extended by [ADR 0008](0008-or-conditions-card-targets-and-combo-lines.md) (OR, card targets, combo lines)
 - **Date:** 2026-11-07
 
 ## Context

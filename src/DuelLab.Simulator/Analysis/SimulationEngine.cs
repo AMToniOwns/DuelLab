@@ -10,10 +10,15 @@ namespace DuelLab.Simulator.Analysis;
 public sealed class SimulationEngine
 {
     /// <summary>
-    /// The version of the sampling and evaluation logic. Bump it whenever a change could alter the
-    /// results of a seeded run, so stored runs are never silently reinterpreted.
+    /// The version of the sampling and evaluation logic, as MAJOR.MINOR.PATCH. Bump MAJOR whenever a
+    /// change could alter the outcome of an existing seeded request, so stored runs are never silently
+    /// reinterpreted; bump MINOR for new capabilities that leave existing requests' outcomes unchanged.
     /// </summary>
-    public const string EngineVersion = "1.0.0";
+    /// <remarks>1.1.0 added OR clauses and card-specific requirements.</remarks>
+    public const string EngineVersion = "1.1.0";
+
+    /// <summary>Largest number of distinct roles and cards one run's scenarios may refer to.</summary>
+    public const int MaxAtoms = 128;
 
     /// <summary>Largest supported sample count.</summary>
     public const int MaxSampleCount = 1_000_000;
@@ -22,7 +27,7 @@ public sealed class SimulationEngine
     public const int MaxHandSize = 20;
 
     /// <summary>Largest number of scenarios in one run.</summary>
-    public const int MaxScenarios = 20;
+    public const int MaxScenarios = 40;
 
     /// <summary>Largest number of sample hands returned.</summary>
     public const int MaxSampleHands = 100;
@@ -50,16 +55,22 @@ public sealed class SimulationEngine
         var cards = request.Deck;
         var deckSize = cards.Sum(c => c.Quantity);
 
-        // Give each role used by a scenario a bit. Roles no scenario mentions do not matter here.
-        var roleBits = request.Scenarios
-            .SelectMany(s => s.Requirements)
-            .Select(r => r.Role)
+        // Give every role and card a scenario refers to its own bit ("atom"). Roles and cards that no
+        // scenario mentions do not matter for evaluation.
+        var requirements = request.Scenarios.SelectMany(s => s.AnyOf).SelectMany(c => c.Requirements).ToList();
+        var atomBits = requirements
+            .SelectMany(r => r.Roles.Select(RoleAtom).Concat(r.Cards.Select(CardAtom)))
             .Distinct(StringComparer.Ordinal)
-            .Select((role, index) => (role, index))
-            .ToDictionary(x => x.role, x => x.index, StringComparer.Ordinal);
+            .Select((atom, index) => (atom, index))
+            .ToDictionary(x => x.atom, x => x.index, StringComparer.Ordinal);
+        UInt128 Bit(string atom) => atomBits.TryGetValue(atom, out var bit) ? UInt128.One << bit : UInt128.Zero;
+        UInt128 RequirementMask(Requirement r) =>
+            r.Roles.Select(RoleAtom).Concat(r.Cards.Select(CardAtom)).Aggregate(UInt128.Zero, (m, a) => m | Bit(a));
 
-        // Group cards by the set of relevant roles they carry.
-        var cardMasks = cards.Select(c => c.Roles.Where(roleBits.ContainsKey).Aggregate(0UL, (m, r) => m | (1UL << roleBits[r]))).ToArray();
+        // Group cards by the atoms they match: their relevant roles, plus themselves if named.
+        var cardMasks = cards
+            .Select(c => c.Roles.Select(RoleAtom).Append(CardAtom(c.Key)).Aggregate(UInt128.Zero, (m, a) => m | Bit(a)))
+            .ToArray();
         var groupMasks = cardMasks.Distinct().ToArray();
         var groupOfCard = cardMasks.Select(m => Array.IndexOf(groupMasks, m)).ToArray();
         var groupSizes = new int[groupMasks.Length];
@@ -68,7 +79,7 @@ public sealed class SimulationEngine
             groupSizes[groupOfCard[i]] += cards[i].Quantity;
         }
 
-        var evaluator = new HandEvaluator(groupMasks, request.Scenarios, roleBits);
+        var evaluator = new HandEvaluator(groupMasks, request.Scenarios, RequirementMask);
         var exact = ExactProbabilities(evaluator, groupSizes, deckSize, request.HandSize);
 
         // Expand the deck into physical copies, identified by their card's index.
@@ -125,9 +136,10 @@ public sealed class SimulationEngine
             }
         }
 
+        var names = cards.ToDictionary(c => c.Key, c => c.Name, StringComparer.Ordinal);
         var scenarioResults = request.Scenarios.Select((scenario, s) => new ScenarioResult(
             scenario.Name,
-            HandEvaluator.Describe(scenario),
+            HandEvaluator.Describe(scenario, key => names.GetValueOrDefault(key)),
             scenarioSuccesses[s],
             request.SampleCount,
             (double)scenarioSuccesses[s] / request.SampleCount,
@@ -276,56 +288,77 @@ public sealed class SimulationEngine
             throw new ArgumentException($"Provide at most {MaxScenarios} scenarios.", nameof(request));
         }
 
-        var roles = new HashSet<string>(StringComparer.Ordinal);
+        var atoms = new HashSet<string>(StringComparer.Ordinal);
         foreach (var scenario in request.Scenarios)
         {
-            if (scenario is null || string.IsNullOrWhiteSpace(scenario.Name) || scenario.Requirements is null)
+            if (scenario is null || string.IsNullOrWhiteSpace(scenario.Name) || scenario.AnyOf is null)
             {
-                throw new ArgumentException("Every scenario needs a name and requirements.", nameof(request));
+                throw new ArgumentException("Every scenario needs a name and at least one group of requirements.", nameof(request));
             }
 
-            if (scenario.Requirements.Count == 0 || scenario.Requirements.Count > HandEvaluator.MaxRequirementsPerScenario)
+            if (scenario.AnyOf.Count == 0 || scenario.AnyOf.Count > HandEvaluator.MaxClausesPerScenario)
             {
                 throw new ArgumentException(
-                    $"Scenario '{scenario.Name}' needs between 1 and {HandEvaluator.MaxRequirementsPerScenario} requirements.",
+                    $"Scenario '{scenario.Name}' needs between 1 and {HandEvaluator.MaxClausesPerScenario} alternatives.",
                     nameof(request));
             }
 
-            foreach (var requirement in scenario.Requirements)
+            foreach (var clause in scenario.AnyOf)
             {
-                if (requirement is null || string.IsNullOrEmpty(requirement.Role))
-                {
-                    throw new ArgumentException($"Scenario '{scenario.Name}' has a requirement without a role.", nameof(request));
-                }
-
-                if (requirement.MinimumCount < 0 || requirement.MinimumCount > request.HandSize)
+                if (clause?.Requirements is null || clause.Requirements.Count == 0 || clause.Requirements.Count > HandEvaluator.MaxRequirementsPerClause)
                 {
                     throw new ArgumentException(
-                        $"In scenario '{scenario.Name}', the minimum for {requirement.Role} must be between 0 and the hand size.",
+                        $"Each alternative in scenario '{scenario.Name}' needs between 1 and {HandEvaluator.MaxRequirementsPerClause} requirements.",
                         nameof(request));
                 }
 
-                if (requirement.MaximumCount is { } max && (max < requirement.MinimumCount || max > request.HandSize))
+                foreach (var requirement in clause.Requirements)
                 {
-                    throw new ArgumentException(
-                        $"In scenario '{scenario.Name}', the maximum for {requirement.Role} must be between the minimum and the hand size.",
-                        nameof(request));
+                    ValidateRequirement(scenario.Name, requirement, request.HandSize);
+                    atoms.UnionWith(requirement.Roles.Select(RoleAtom));
+                    atoms.UnionWith(requirement.Cards.Select(CardAtom));
                 }
-
-                if (requirement.MinimumCount == 0 && requirement.MaximumCount is null)
-                {
-                    throw new ArgumentException(
-                        $"In scenario '{scenario.Name}', the requirement for {requirement.Role} has no effect; set a minimum above 0 or a maximum.",
-                        nameof(request));
-                }
-
-                roles.Add(requirement.Role);
             }
         }
 
-        if (roles.Count > 64)
+        if (atoms.Count > MaxAtoms)
         {
-            throw new ArgumentException("A run can refer to at most 64 different roles.", nameof(request));
+            throw new ArgumentException($"A run can refer to at most {MaxAtoms} different roles and cards.", nameof(request));
         }
     }
+
+    private static void ValidateRequirement(string scenario, Requirement? requirement, int handSize)
+    {
+        if (requirement?.Roles is null || requirement.Cards is null
+            || (requirement.Roles.Count == 0 && requirement.Cards.Count == 0)
+            || requirement.Roles.Any(string.IsNullOrEmpty) || requirement.Cards.Any(string.IsNullOrEmpty))
+        {
+            throw new ArgumentException($"Scenario '{scenario}' has a requirement without a role or card to look for.", nameof(requirement));
+        }
+
+        if (requirement.MinimumCount < 0 || requirement.MinimumCount > handSize)
+        {
+            throw new ArgumentException(
+                $"In scenario '{scenario}', a minimum must be between 0 and the hand size ({handSize}).",
+                nameof(requirement));
+        }
+
+        if (requirement.MaximumCount is { } max && (max < requirement.MinimumCount || max > handSize))
+        {
+            throw new ArgumentException(
+                $"In scenario '{scenario}', a maximum must be between its minimum and the hand size ({handSize}).",
+                nameof(requirement));
+        }
+
+        if (requirement.MinimumCount == 0 && requirement.MaximumCount is null)
+        {
+            throw new ArgumentException(
+                $"In scenario '{scenario}', a requirement has no effect; set a minimum above 0 or a maximum.",
+                nameof(requirement));
+        }
+    }
+
+    private static string RoleAtom(string role) => "r:" + role;
+
+    private static string CardAtom(string key) => "c:" + key;
 }

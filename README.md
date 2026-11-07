@@ -18,9 +18,12 @@ to locals.
   survive navigation and page reloads.
 - **Roles**: label cards as Starter, Extender, Searcher, Hand trap, Board breaker, Brick or any custom
   role. A card can have several.
+- **Combo lines**: save the pieces each line needs ("Ash *or* the card that searches it" + "any
+  extender") and get the exact chance of opening each line, and any of them.
 - **Simulator**: seeded, reproducible Monte Carlo draws (100 to 100,000 hands) for any set of
-  scenarios ("at least 1 starter AND at least 1 extender, from different cards", "no bricks", ...),
-  with 95% confidence intervals, **exact probabilities**, per-card opening odds and sample hands.
+  scenarios, with AND, OR, specific cards or roles, and maximums ("(starter AND extender, from
+  different cards) OR 2+ starters", "no bricks", ...), 95% confidence intervals, **exact
+  probabilities**, per-card opening odds and sample hands.
 - **History and reproduction**: every run stores its configuration and a snapshot of the deck, can
   be re-run and verified to give identical results, and warns if the deck changed since.
 - **Comparison**: runs two versions with the same settings and seed, and shows the change in
@@ -85,13 +88,16 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
    Use "→ Side" to move a copy to the Side Deck.
 3. **Assign roles** with "+ Roles" on each card. Custom roles are allowed. The panel on the right
    counts copies per role in the Main Deck.
-4. **Save.** The deck check lists anything that blocks simulation (for example, fewer than 40 cards).
-5. **Simulate.** Pick the number of hands, the hand size (5 going first, 6 to include the first
-   draw going second) and optionally a seed. Edit or add scenarios, then run.
-6. **Read the results.** Bars show the simulated share; the black tick is the exact probability; the
+4. **Add combo lines** (optional) under the deck: one piece per card you need, and for each piece
+   every card that can stand in for it, such as the card itself or its searchers.
+5. **Save.** The deck check lists anything that blocks simulation (for example, fewer than 40 cards).
+6. **Simulate.** Pick the number of hands, the hand size (5 going first, 6 to include the first
+   draw going second) and optionally a seed. Edit or add scenarios ("+ And…", "+ Or…", and the
+   role/card picker on each requirement), keep "Also measure combo lines" on, then run.
+7. **Read the results.** Bars show the simulated share; the black tick is the exact probability; the
    whisker is the 95% interval. The table has every number. "Reproduce" re-runs the saved
    configuration and confirms the results are identical.
-7. **Experiment.** On the deck page, "Duplicate" a version, change ratios, save, and use
+8. **Experiment.** On the deck page, "Duplicate" a version, change ratios, save, and use
    "Compare latest two" (or **Compare**) to see the change in percentage points.
 
 ## Documentation
@@ -108,6 +114,7 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
   - [0005 – Card data: bulk import from YGOPRODeck](docs/adr/0005-card-data-bulk-import.md)
   - [0006 – Versions, snapshots and reproducible runs](docs/adr/0006-versions-snapshots-and-reproducible-runs.md)
   - [0007 – Single-image deployment without accounts](docs/adr/0007-single-image-deployment-without-accounts.md)
+  - [0008 – OR conditions, card targets and combo lines](docs/adr/0008-or-conditions-card-targets-and-combo-lines.md)
 
 ## Credits
 

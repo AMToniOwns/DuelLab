@@ -1,43 +1,60 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { Scenario } from '@/api/types'
-import { roleLabel } from '@/lib/roles'
+import type { Clause, Requirement, Scenario } from '@/api/types'
+import {
+  addAlternative,
+  clausesOf,
+  distinctMatters,
+  newRequirement,
+  removeAlternative,
+  setTargets,
+  targetsOf,
+} from '@/lib/scenarios'
+import TargetPicker, { type PickableCard } from './TargetPicker.vue'
 
 /**
- * Edits the conditions a simulation measures. Each scenario is a set of requirements that must all
- * hold (AND); "different cards" decides whether one card may count toward several requirements.
+ * Edits the conditions a simulation measures. A scenario is met when ANY of its alternatives holds; an
+ * alternative holds when ALL of its requirements do. A requirement counts cards that have any of the
+ * chosen roles or are any of the chosen cards.
  */
 const scenarios = defineModel<Scenario[]>({ required: true })
-const props = defineProps<{ roles: string[]; roleCounts?: Record<string, number> }>()
-defineEmits<{ reset: [] }>()
-
-const roleOptions = computed(() =>
-  props.roles.map((key) => ({ key, label: roleLabel(key), count: props.roleCounts?.[key] })),
+const props = withDefaults(
+  defineProps<{ roles: string[]; roleCounts?: Record<string, number>; cards?: PickableCard[] }>(),
+  {
+    roleCounts: undefined,
+    cards: () => [],
+  },
 )
+defineEmits<{ reset: [] }>()
 
 function addScenario(): void {
   scenarios.value.push({
     name: `Scenario ${scenarios.value.length + 1}`,
-    requirements: [{ role: 'Starter', minimumCount: 1, maximumCount: null }],
+    requirements: [newRequirement(props.roles[0])],
     requireDistinctCards: true,
+    anyOf: null,
   })
 }
 
-function addRequirement(scenario: Scenario): void {
-  scenario.requirements.push({
-    role: props.roles[0] ?? 'Starter',
-    minimumCount: 1,
-    maximumCount: null,
-  })
-}
-
-function setMaximum(requirement: Scenario['requirements'][number], raw: string): void {
+function setMaximum(requirement: Requirement, raw: string): void {
   requirement.maximumCount = raw === '' ? null : Math.max(0, Math.floor(Number(raw)))
 }
 
-const matters = (s: Scenario) =>
-  s.requirements.filter((r) => r.minimumCount > 0).length > 1 ||
-  s.requirements.some((r) => r.minimumCount > 1)
+function updateTargets(
+  requirement: Requirement,
+  roles: string[] | null,
+  cardIds: number[] | null,
+): void {
+  const current = targetsOf(requirement)
+  setTargets(requirement, roles ?? current.roles, cardIds ?? current.cardIds)
+}
+
+function removeRequirement(scenario: Scenario, clause: Clause, index: number): void {
+  clause.requirements.splice(index, 1)
+  if (clause.requirements.length === 0) {
+    const clauses = clausesOf(scenario)
+    if (clauses.length > 1) removeAlternative(scenario, clauses.indexOf(clause))
+  }
+}
 </script>
 
 <template>
@@ -54,7 +71,7 @@ const matters = (s: Scenario) =>
           :id="`scenario-name-${si}`"
           v-model="scenario.name"
           class="input font-medium"
-          maxlength="60"
+          maxlength="100"
         />
         <button
           type="button"
@@ -66,70 +83,107 @@ const matters = (s: Scenario) =>
         </button>
       </div>
 
-      <div class="space-y-1.5">
-        <div
-          v-for="(req, ri) in scenario.requirements"
-          :key="ri"
-          class="flex flex-wrap items-center gap-2 text-sm"
+      <template v-for="(clause, ci) in clausesOf(scenario)" :key="ci">
+        <p
+          v-if="clausesOf(scenario).length > 1"
+          class="my-1.5 text-xs font-semibold tracking-wide text-ink-2 uppercase"
         >
-          <span class="w-10 text-ink-muted">{{ ri === 0 ? 'Hand has' : 'and' }}</span>
-          <label class="sr-only" :for="`min-${si}-${ri}`">Minimum</label>
-          <span class="text-ink-2">at least</span>
-          <input
-            :id="`min-${si}-${ri}`"
-            v-model.number="req.minimumCount"
-            type="number"
-            min="0"
-            max="20"
-            class="input num w-16!"
-          />
-          <label class="sr-only" :for="`role-${si}-${ri}`">Role</label>
-          <select :id="`role-${si}-${ri}`" v-model="req.role" class="input w-auto!">
-            <option v-for="o in roleOptions" :key="o.key" :value="o.key">
-              {{ o.label }}{{ o.count !== undefined ? ` (${o.count} in deck)` : '' }}
-            </option>
-          </select>
-          <span class="text-ink-2">at most</span>
-          <label class="sr-only" :for="`max-${si}-${ri}`">Maximum (optional)</label>
-          <input
-            :id="`max-${si}-${ri}`"
-            :value="req.maximumCount ?? ''"
-            type="number"
-            min="0"
-            max="20"
-            placeholder="any"
-            class="input num w-16!"
-            @input="setMaximum(req, ($event.target as HTMLInputElement).value)"
-          />
-          <button
-            v-if="scenario.requirements.length > 1"
-            type="button"
-            class="text-ink-muted hover:text-critical"
-            :aria-label="`Remove requirement ${ri + 1}`"
-            @click="scenario.requirements.splice(ri, 1)"
+          {{ ci === 0 ? 'Either' : 'Or' }}
+        </p>
+        <div
+          class="space-y-1.5"
+          :class="{ 'rounded-md border-l-2 border-accent pl-2': clausesOf(scenario).length > 1 }"
+        >
+          <div
+            v-for="(req, ri) in clause.requirements"
+            :key="ri"
+            class="flex flex-wrap items-center gap-2 text-sm"
           >
-            ✕
-          </button>
+            <span class="w-10 text-ink-muted">{{ ri === 0 ? 'Hand has' : 'and' }}</span>
+            <span class="text-ink-2">at least</span>
+            <label class="sr-only" :for="`min-${si}-${ci}-${ri}`">Minimum</label>
+            <input
+              :id="`min-${si}-${ci}-${ri}`"
+              v-model.number="req.minimumCount"
+              type="number"
+              min="0"
+              max="20"
+              class="input num w-16!"
+            />
+            <TargetPicker
+              :roles="targetsOf(req).roles"
+              :card-ids="targetsOf(req).cardIds"
+              :available-roles="roles"
+              :role-counts="roleCounts"
+              :cards="cards"
+              :label="`target-${si}-${ci}-${ri}`"
+              @update:roles="updateTargets(req, $event, null)"
+              @update:card-ids="updateTargets(req, null, $event)"
+            />
+            <span class="text-ink-2">at most</span>
+            <label class="sr-only" :for="`max-${si}-${ci}-${ri}`">Maximum (optional)</label>
+            <input
+              :id="`max-${si}-${ci}-${ri}`"
+              :value="req.maximumCount ?? ''"
+              type="number"
+              min="0"
+              max="20"
+              placeholder="any"
+              class="input num w-16!"
+              @input="setMaximum(req, ($event.target as HTMLInputElement).value)"
+            />
+            <button
+              v-if="clause.requirements.length > 1 || clausesOf(scenario).length > 1"
+              type="button"
+              class="text-ink-muted hover:text-critical"
+              :aria-label="`Remove requirement ${ri + 1}`"
+              @click="removeRequirement(scenario, clause, ri)"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              class="btn btn-sm"
+              @click="clause.requirements.push(newRequirement(roles[0]))"
+            >
+              + And…
+            </button>
+            <label
+              v-if="distinctMatters(clause)"
+              class="flex items-center gap-1.5 text-xs text-ink-2"
+            >
+              <input
+                v-model="clause.requireDistinctCards"
+                type="checkbox"
+                @change="
+                  clausesOf(scenario).length === 1 &&
+                  (scenario.requireDistinctCards = clause.requireDistinctCards)
+                "
+              />
+              Each requirement needs <strong class="font-semibold">different cards</strong>
+              <span class="text-ink-muted">(a card with two roles counts once)</span>
+            </label>
+          </div>
         </div>
-      </div>
+      </template>
 
-      <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" class="btn btn-sm" @click="addRequirement(scenario)">
-          + Requirement
-        </button>
-        <label v-if="matters(scenario)" class="flex items-center gap-1.5 text-xs text-ink-2">
-          <input v-model="scenario.requireDistinctCards" type="checkbox" />
-          Each requirement needs <strong class="font-semibold">different cards</strong>
-          <span class="text-ink-muted">(a card with two roles counts once)</span>
-        </label>
-      </div>
+      <button
+        type="button"
+        class="btn btn-sm mt-2"
+        :disabled="clausesOf(scenario).length >= 16"
+        @click="addAlternative(scenario)"
+      >
+        + Or…
+      </button>
     </div>
 
     <div class="flex flex-wrap gap-2">
       <button
         type="button"
         class="btn btn-sm"
-        :disabled="scenarios.length >= 20"
+        :disabled="scenarios.length >= 40"
         @click="addScenario"
       >
         + Scenario

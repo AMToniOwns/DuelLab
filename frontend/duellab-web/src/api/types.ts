@@ -83,6 +83,19 @@ export interface VersionCard {
   roles: string[]
 }
 
+export interface ComboPiece {
+  cardIds: number[]
+  roles: string[]
+  count: number
+}
+
+export interface ComboLine {
+  id: string
+  name: string
+  notes: string | null
+  pieces: ComboPiece[]
+}
+
 export interface VersionDetail {
   id: string
   deckId: string
@@ -93,19 +106,34 @@ export interface VersionDetail {
   createdAt: string
   updatedAt: string
   cards: VersionCard[]
+  comboLines: ComboLine[]
   validation: Validation
 }
 
+/**
+ * A bound on matching cards. A card matches when it has `role` or any of `roles`, or is one of
+ * `cardIds` (logical OR).
+ */
 export interface Requirement {
-  role: string
+  role?: string | null
+  roles?: string[] | null
+  cardIds?: number[] | null
   minimumCount: number
   maximumCount?: number | null
 }
 
-export interface Scenario {
-  name: string
+/** One alternative of a scenario: every requirement must hold. */
+export interface Clause {
   requirements: Requirement[]
   requireDistinctCards: boolean
+}
+
+/** A scenario: either `requirements` (all must hold) or `anyOf` (at least one alternative must hold). */
+export interface Scenario {
+  name: string
+  requirements?: Requirement[] | null
+  requireDistinctCards: boolean
+  anyOf?: Clause[] | null
 }
 
 export interface SimulationConfig {
@@ -114,6 +142,7 @@ export interface SimulationConfig {
   seed?: number | null
   scenarios?: Scenario[] | null
   sampleHandCount?: number | null
+  includeComboLines?: boolean
 }
 
 export interface ConfidenceInterval {
@@ -240,10 +269,16 @@ export interface RoleChange {
   removed: string[]
 }
 
+export interface ComboLineChange {
+  name: string
+  change: 'added' | 'removed' | 'changed'
+}
+
 export interface Comparison {
   base: SimulationRun
   candidate: SimulationRun
   scenarios: ScenarioComparison[]
   cardChanges: CardChange[]
   roleChanges: RoleChange[]
+  comboLineChanges: ComboLineChange[]
 }

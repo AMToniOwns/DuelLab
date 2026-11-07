@@ -35,7 +35,23 @@ public sealed record VersionDetailDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<VersionCardDto> Cards,
+    IReadOnlyList<ComboLineDto> ComboLines,
     ValidationDto Validation);
+
+/// <summary>A combo line: the pieces needed in the opening hand, each from a different card.</summary>
+public sealed record ComboLineDto(Guid Id, string Name, string? Notes, IReadOnlyList<ComboPieceDto> Pieces);
+
+/// <summary>
+/// One piece of a combo line: <paramref name="Count"/> cards, each being one of <paramref name="CardIds"/>
+/// or having one of <paramref name="Roles"/>.
+/// </summary>
+public sealed record ComboPieceDto(IReadOnlyList<int> CardIds, IReadOnlyList<string> Roles, int Count = 1);
+
+/// <summary>Request to replace a version's combo lines.</summary>
+public sealed record UpdateComboLinesRequest(IReadOnlyList<ComboLineRequest> Lines);
+
+/// <summary>One requested combo line.</summary>
+public sealed record ComboLineRequest(string Name, string? Notes, IReadOnlyList<ComboPieceDto> Pieces);
 
 /// <summary>One (card, zone) entry with the card's roles in this version.</summary>
 public sealed record VersionCardDto(CardDto Card, DeckZone Zone, int Quantity, IReadOnlyList<string> Roles);

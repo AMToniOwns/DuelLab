@@ -9,18 +9,41 @@ namespace DuelLab.Application.Simulations;
 /// <param name="Seed">Seed for reproducibility. Omit it and the server picks one and records it.</param>
 /// <param name="Scenarios">Conditions to measure. Omit them to use the defaults.</param>
 /// <param name="SampleHandCount">How many simulated hands to keep for inspection (default 20).</param>
+/// <param name="IncludeComboLines">
+/// Also measure the version's combo lines: one scenario per line, plus "Any combo line" when there are two
+/// or more. The expanded scenarios are stored with the run.
+/// </param>
 public sealed record SimulationConfigDto(
     int SampleCount = 10_000,
     int OpeningHandSize = 5,
     long? Seed = null,
     IReadOnlyList<ScenarioDto>? Scenarios = null,
-    int? SampleHandCount = null);
+    int? SampleHandCount = null,
+    bool IncludeComboLines = true);
 
-/// <summary>A condition: every requirement must hold.</summary>
-public sealed record ScenarioDto(string Name, IReadOnlyList<RequirementDto> Requirements, bool RequireDistinctCards = true);
+/// <summary>
+/// A condition. Either <paramref name="Requirements"/> (all must hold) or <paramref name="AnyOf"/>
+/// (alternatives: at least one must hold).
+/// </summary>
+public sealed record ScenarioDto(
+    string Name,
+    IReadOnlyList<RequirementDto>? Requirements = null,
+    bool RequireDistinctCards = true,
+    IReadOnlyList<ClauseDto>? AnyOf = null);
 
-/// <summary>A bound on the cards with one role, e.g. at least 1 "Starter" or at most 0 "Brick".</summary>
-public sealed record RequirementDto(string Role, int MinimumCount = 1, int? MaximumCount = null);
+/// <summary>One alternative of a scenario: every requirement must hold.</summary>
+public sealed record ClauseDto(IReadOnlyList<RequirementDto> Requirements, bool RequireDistinctCards = true);
+
+/// <summary>
+/// A bound on matching cards, e.g. at least 1 "Starter" or at most 0 "Brick". A card matches when it has
+/// <paramref name="Role"/> or any of <paramref name="Roles"/>, or is one of <paramref name="CardIds"/>.
+/// </summary>
+public sealed record RequirementDto(
+    string? Role = null,
+    int MinimumCount = 1,
+    int? MaximumCount = null,
+    IReadOnlyList<string>? Roles = null,
+    IReadOnlyList<int>? CardIds = null);
 
 /// <summary>The Main Deck as it was when a run happened.</summary>
 public sealed record DeckSnapshot(Guid DeckId, string DeckName, Guid VersionId, string VersionName, IReadOnlyList<SnapshotCard> MainDeck);
@@ -86,7 +109,11 @@ public sealed record ComparisonDto(
     SimulationRunDto Candidate,
     IReadOnlyList<ScenarioComparisonDto> Scenarios,
     IReadOnlyList<CardChangeDto> CardChanges,
-    IReadOnlyList<RoleChangeDto> RoleChanges);
+    IReadOnlyList<RoleChangeDto> RoleChanges,
+    IReadOnlyList<ComboLineChangeDto> ComboLineChanges);
+
+/// <summary>A combo line that differs between the versions: "added", "removed" or "changed".</summary>
+public sealed record ComboLineChangeDto(string Name, string Change);
 
 /// <summary>One scenario in both versions. Differences are candidate − base, in percentage points.</summary>
 public sealed record ScenarioComparisonDto(

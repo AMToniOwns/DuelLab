@@ -117,6 +117,24 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
         return await ToDetailAsync(deck, version, cancellationToken);
     }
 
+    /// <summary>Replaces a version's combo lines.</summary>
+    public async Task<VersionDetailDto> ReplaceComboLinesAsync(Guid versionId, UpdateComboLinesRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request?.Lines);
+        var (deck, version) = await LoadVersionAsync(versionId, cancellationToken);
+
+        var now = time.GetUtcNow();
+        version.ReplaceComboLines(
+            request.Lines.Select(l => new ComboLineDraft(
+                l.Name,
+                l.Notes,
+                (l.Pieces ?? []).Select(p => new ComboPiece(p?.CardIds ?? [], p?.Roles ?? [], p?.Count ?? 1)).ToList())),
+            now);
+        deck.Touch(now);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return await ToDetailAsync(deck, version, cancellationToken);
+    }
+
     /// <summary>Loads a version and its deck, or throws <see cref="NotFoundException"/>.</summary>
     internal async Task<(Deck Deck, DeckVersion Version)> LoadVersionAsync(Guid versionId, CancellationToken cancellationToken)
     {
@@ -159,6 +177,7 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
             version.CreatedAt,
             version.UpdatedAt,
             entries,
+            version.ComboLines.OrderBy(l => l.Position).Select(ToDto).ToList(),
             new ValidationDto(
                 validation.IsValid,
                 version.CountIn(DeckZone.Main),
@@ -166,6 +185,12 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
                 version.CountIn(DeckZone.Side),
                 validation.Issues));
     }
+
+    internal static ComboLineDto ToDto(DeckVersionComboLine line) => new(
+        line.Id,
+        line.Name,
+        line.Notes,
+        line.Pieces.Select(p => new ComboPieceDto(p.CardIds, p.Roles, p.Count)).ToList());
 
     private static DeckSummaryDto ToSummary(Deck deck) => new(
         deck.Id,

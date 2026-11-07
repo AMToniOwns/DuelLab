@@ -36,6 +36,11 @@ public sealed class VersionsController(DeckService decks, SimulationService simu
     public Task<VersionDetailDto> UpdateRoles(Guid id, UpdateRolesRequest request, CancellationToken cancellationToken) =>
         decks.ReplaceRolesAsync(id, request, cancellationToken);
 
+    /// <summary>Replaces the version's combo lines.</summary>
+    [HttpPut("{id:guid}/combos")]
+    public Task<VersionDetailDto> UpdateComboLines(Guid id, UpdateComboLinesRequest request, CancellationToken cancellationToken) =>
+        decks.ReplaceComboLinesAsync(id, request, cancellationToken);
+
     /// <summary>Runs and stores an opening-hand simulation.</summary>
     [HttpPost("{id:guid}/simulate")]
     public Task<SimulationRunDto> Simulate(Guid id, SimulationConfigDto? request, CancellationToken cancellationToken) =>

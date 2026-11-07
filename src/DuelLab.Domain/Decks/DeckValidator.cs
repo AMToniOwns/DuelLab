@@ -92,6 +92,20 @@ public static class DeckValidator
             }
         }
 
+        var mainIds = version.Cards.Where(c => c.Zone == DeckZone.Main).Select(c => c.CardId).ToHashSet();
+        foreach (var line in version.ComboLines)
+        {
+            foreach (var cardId in line.Pieces.SelectMany(p => p.CardIds).Distinct().Where(id => !mainIds.Contains(id)))
+            {
+                var name = cards.TryGetValue(cardId, out var card) ? card.Name : $"Card {cardId}";
+                issues.Add(new(
+                    ValidationSeverity.Warning,
+                    "combo.card_not_in_main",
+                    $"Combo line '{line.Name}' uses {name}, which is not in the Main Deck, so that option can never be in your opening hand.",
+                    cardId));
+            }
+        }
+
         return new DeckValidationResult(issues);
     }
 

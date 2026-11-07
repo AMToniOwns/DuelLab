@@ -13,6 +13,7 @@ public sealed class DeckVersion
 {
     private readonly List<DeckVersionCard> _cards = [];
     private readonly List<DeckVersionCardRole> _roles = [];
+    private readonly List<DeckVersionComboLine> _comboLines = [];
 
     private DeckVersion()
     {
@@ -46,6 +47,9 @@ public sealed class DeckVersion
     /// <summary>Role assignments, one entry per (card, role).</summary>
     public IReadOnlyList<DeckVersionCardRole> Roles => _roles;
 
+    /// <summary>Combo lines, in display order.</summary>
+    public IReadOnlyList<DeckVersionComboLine> ComboLines => _comboLines;
+
     /// <summary>The number of cards in a zone.</summary>
     public int CountIn(DeckZone zone) => _cards.Where(c => c.Zone == zone).Sum(c => c.Quantity);
 
@@ -69,6 +73,7 @@ public sealed class DeckVersion
         copy.Notes = Notes;
         copy._cards.AddRange(_cards.Select(c => new DeckVersionCard(copy.Id, c.CardId, c.Zone, c.Quantity)));
         copy._roles.AddRange(_roles.Select(r => new DeckVersionCardRole(copy.Id, r.CardId, r.Role)));
+        copy._comboLines.AddRange(_comboLines.Select(l => l.CopyTo(copy.Id, now)));
         return copy;
     }
 
@@ -176,6 +181,35 @@ public sealed class DeckVersion
 
         _roles.Clear();
         _roles.AddRange(list.Select(a => new DeckVersionCardRole(Id, a.CardId, a.Role)));
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Replaces all combo lines. Names must be unique, and every named card must be in the version or
+    /// already be used by the current lines. (Removing a card keeps the lines that use it unchanged, and
+    /// <see cref="DeckValidator"/> warns about it; re-saving those lines must still work.)
+    /// </summary>
+    public void ReplaceComboLines(IEnumerable<ComboLineDraft> lines, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        var list = lines.ToList();
+        if (list.Count > DeckVersionComboLine.MaxPerVersion)
+        {
+            throw new DomainException("combo.too_many", $"A version can have at most {DeckVersionComboLine.MaxPerVersion} combo lines.");
+        }
+
+        var allowed = _cards.Select(c => c.CardId)
+            .Concat(_comboLines.SelectMany(l => l.Pieces).SelectMany(p => p.CardIds))
+            .ToHashSet();
+        var validated = list.Select(l => DeckVersionComboLine.Validate(l, allowed)).ToList();
+        var duplicate = validated.GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new DomainException("combo.duplicate_name", $"There is more than one combo line called '{duplicate.Key}'.");
+        }
+
+        _comboLines.Clear();
+        _comboLines.AddRange(validated.Select((l, i) => new DeckVersionComboLine(Id, i, l.Name, l.Notes, l.Pieces, now)));
         UpdatedAt = now;
     }
 }

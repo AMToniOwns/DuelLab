@@ -2,6 +2,7 @@ import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/api/client'
 import type { Scenario, SimulationConfig } from '@/api/types'
+import { cloneScenario } from '@/lib/scenarios'
 
 const STORAGE_KEY = 'duellab-simulation-config'
 
@@ -10,6 +11,7 @@ interface Saved {
   handSize: number
   seed: string
   scenarios: Scenario[] | null
+  includeComboLines?: boolean
 }
 
 function read(): Saved | null {
@@ -27,6 +29,7 @@ export const useSimulationConfigStore = defineStore('simulationConfig', () => {
   const handSize = ref(saved?.handSize ?? 5)
   const seed = ref(saved?.seed ?? '')
   const scenarios = ref<Scenario[]>(saved?.scenarios ?? [])
+  const includeComboLines = ref(saved?.includeComboLines ?? true)
   const defaults = ref<Scenario[]>([])
 
   async function ensureScenarios(): Promise<void> {
@@ -35,9 +38,7 @@ export const useSimulationConfigStore = defineStore('simulationConfig', () => {
   }
 
   function resetScenarios(): void {
-    scenarios.value = structuredClone(
-      defaults.value.map((s) => ({ ...s, requirements: s.requirements.map((r) => ({ ...r })) })),
-    )
+    scenarios.value = defaults.value.map(cloneScenario)
   }
 
   /** The request body for the API. An empty seed lets the server choose (and record) one. */
@@ -46,15 +47,13 @@ export const useSimulationConfigStore = defineStore('simulationConfig', () => {
       sampleCount: sampleCount.value,
       openingHandSize: handSize.value,
       seed: seed.value.trim() === '' ? null : Number(seed.value.trim()),
-      scenarios: scenarios.value.map((s) => ({
-        ...s,
-        requirements: s.requirements.map((r) => ({ ...r, maximumCount: r.maximumCount ?? null })),
-      })),
+      scenarios: scenarios.value.map(cloneScenario),
+      includeComboLines: includeComboLines.value,
     }
   }
 
   watch(
-    [sampleCount, handSize, seed, scenarios],
+    [sampleCount, handSize, seed, scenarios, includeComboLines],
     () => {
       try {
         const value: Saved = {
@@ -62,6 +61,7 @@ export const useSimulationConfigStore = defineStore('simulationConfig', () => {
           handSize: handSize.value,
           seed: seed.value,
           scenarios: scenarios.value,
+          includeComboLines: includeComboLines.value,
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
       } catch {
@@ -76,6 +76,7 @@ export const useSimulationConfigStore = defineStore('simulationConfig', () => {
     handSize,
     seed,
     scenarios,
+    includeComboLines,
     defaults,
     ensureScenarios,
     resetScenarios,

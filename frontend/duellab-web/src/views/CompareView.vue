@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
-import type { Comparison, DeckSummary } from '@/api/types'
+import type { Comparison, DeckSummary, VersionDetail } from '@/api/types'
 import { percent, pointDelta } from '@/lib/format'
 import { roleLabel } from '@/lib/roles'
 import DumbbellChart from '@/components/DumbbellChart.vue'
@@ -26,6 +26,20 @@ const decks = ref<DeckSummary[] | null>(null)
 const comparison = ref<Comparison | null>(null)
 const running = ref(false)
 const settings = ref<InstanceType<typeof SimulationSettings> | null>(null)
+const baseVersion = ref<VersionDetail | null>(null)
+const baseCards = computed(() =>
+  (baseVersion.value?.cards ?? [])
+    .filter((c) => c.zone === 'Main')
+    .map((c) => ({ id: c.card.id, name: c.card.name, inMain: true })),
+)
+watch(
+  base,
+  async (id) => {
+    baseVersion.value = null
+    if (id) baseVersion.value = await api.versions.get(id).catch(() => null)
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   try {
@@ -119,10 +133,16 @@ const rows = computed(() =>
           <ScenarioEditor
             v-model="config.scenarios"
             :roles="availableRoles([])"
+            :cards="baseCards"
             @reset="config.resetScenarios()"
           />
         </div>
       </details>
+      <label class="flex items-center gap-2 text-sm">
+        <input v-model="config.includeComboLines" type="checkbox" />
+        Also measure combo lines
+        <span class="text-ink-muted">(the base version's, plus any only the candidate has)</span>
+      </label>
       <div class="flex justify-end">
         <button
           type="button"
@@ -212,9 +232,17 @@ const rows = computed(() =>
               >
             </li>
           </ul>
+          <template v-if="comparison.comboLineChanges.length">
+            <h3 class="mt-3 mb-1 text-sm font-semibold">Combo lines</h3>
+            <ul class="space-y-0.5 text-sm" data-testid="combo-changes">
+              <li v-for="c in comparison.comboLineChanges" :key="c.name">
+                {{ c.name }}: <span class="text-ink-2">{{ c.change }}</span>
+              </li>
+            </ul>
+          </template>
         </section>
         <section class="card p-4" aria-labelledby="role-changes-heading">
-          <h2 id="role-changes-heading" class="mb-2 font-semibold">Role changes</h2>
+          <h2 id="role-changes-heading" class="mb-2 font-semibold">Role and combo changes</h2>
           <p v-if="comparison.roleChanges.length === 0" class="text-sm text-ink-muted">
             Same roles in both versions.
           </p>

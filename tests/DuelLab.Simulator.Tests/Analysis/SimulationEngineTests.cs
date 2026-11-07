@@ -23,7 +23,7 @@ public sealed class SimulationEngineTests
         return deck;
     }
 
-    private static Scenario AtLeast(string role, int count = 1) => new($"{count}+ {role}", [new RoleRequirement(role, count)]);
+    private static Scenario AtLeast(string role, int count = 1) => Scenario.AllOf($"{count}+ {role}", [Requirement.ForRole(role, count)]);
 
     private static AnalysisRequest Request(IReadOnlyList<AnalysisCard> deck, IReadOnlyList<Scenario> scenarios, int samples = 100_000, long seed = 12345, int handSize = 5) =>
         new(deck, handSize, samples, seed, scenarios);
@@ -56,12 +56,12 @@ public sealed class SimulationEngineTests
     {
         // The only starters/extenders are 3 copies of one card that is both.
         var deck = Deck(40, Card("Both", 3, "Starter", "Extender"));
-        var requirements = new[] { new RoleRequirement("Starter"), new RoleRequirement("Extender") };
+        var requirements = new[] { Requirement.ForRole("Starter"), Requirement.ForRole("Extender") };
 
         var result = _engine.Run(Request(deck,
         [
-            new Scenario("distinct", requirements, RequireDistinctCards: true),
-            new Scenario("overlapping", requirements, RequireDistinctCards: false),
+            Scenario.AllOf("distinct", requirements, RequireDistinctCards: true),
+            Scenario.AllOf("overlapping", requirements, RequireDistinctCards: false),
         ]));
 
         // Distinct: needs two copies of "Both". Overlapping: one copy is enough.
@@ -80,9 +80,9 @@ public sealed class SimulationEngineTests
             Card("Brick", 2, "Brick"));
         var scenarios = new[]
         {
-            new Scenario("S+E distinct", [new RoleRequirement("Starter"), new RoleRequirement("Extender")], true),
-            new Scenario("S+E overlap", [new RoleRequirement("Starter"), new RoleRequirement("Extender")], false),
-            new Scenario("2 starters, no brick", [new RoleRequirement("Starter", 2), new RoleRequirement("Brick", 0, 0)], true),
+            Scenario.AllOf("S+E distinct", [Requirement.ForRole("Starter"), Requirement.ForRole("Extender")], true),
+            Scenario.AllOf("S+E overlap", [Requirement.ForRole("Starter"), Requirement.ForRole("Extender")], false),
+            Scenario.AllOf("2 starters, no brick", [Requirement.ForRole("Starter", 2), Requirement.ForRole("Brick", 0, 0)], true),
         };
 
         var result = _engine.Run(Request(deck, scenarios, samples: 1_000));
@@ -117,7 +117,7 @@ public sealed class SimulationEngineTests
 
         var result = _engine.Run(Request(deck,
         [
-            new Scenario("no brick", [new RoleRequirement("Brick", 0, 0)]),
+            Scenario.AllOf("no brick", [Requirement.ForRole("Brick", 0, 0)]),
             AtLeast("Brick"),
         ]));
 
@@ -140,7 +140,7 @@ public sealed class SimulationEngineTests
         // 60 single cards, each with its own role, and a 10-card hand: C(60,10) ≈ 7.5e10 compositions.
         var deck = Enumerable.Range(0, 60).Select(i => Card($"C{i}", 1, $"Custom:R{i}")).ToList();
         var scenarios = Enumerable.Range(0, 20)
-            .Select(s => new Scenario($"S{s}", Enumerable.Range(0, 3).Select(r => new RoleRequirement($"Custom:R{s * 3 + r}")).ToList()))
+            .Select(s => Scenario.AllOf($"S{s}", Enumerable.Range(0, 3).Select(r => Requirement.ForRole($"Custom:R{s * 3 + r}")).ToList()))
             .ToList();
 
         var result = _engine.Run(Request(deck, scenarios, samples: 100, handSize: 10));
@@ -159,7 +159,7 @@ public sealed class SimulationEngineTests
         var scenarios = new[]
         {
             AtLeast("Starter"), AtLeast("Starter", 2), AtLeast("Extender"), AtLeast("Brick"),
-            new Scenario("S+E", [new RoleRequirement("Starter"), new RoleRequirement("Extender")]),
+            Scenario.AllOf("S+E", [Requirement.ForRole("Starter"), Requirement.ForRole("Extender")]),
         };
 
         var result = _engine.Run(Request(deck, scenarios));
@@ -223,7 +223,7 @@ public sealed class SimulationEngineTests
 
         var result = _engine.Run(Request(deck, [], samples: 1, seed: 12345));
 
-        Assert.Equal("1.0.0", SimulationEngine.EngineVersion);
+        Assert.Equal("1.1.0", SimulationEngine.EngineVersion);
         Assert.Equal(PinnedHand, result.SampleHands[0].CardKeys);
     }
 
@@ -253,12 +253,12 @@ public sealed class SimulationEngineTests
     public void Description_StatesTheSemantics()
     {
         var result = _engine.Run(Request(Deck(40), [
-            new Scenario("x", [new RoleRequirement("Starter"), new RoleRequirement("Extender")], RequireDistinctCards: true),
-            new Scenario("y", [new RoleRequirement("Brick", 0, 0)]),
-            new Scenario("z", [new RoleRequirement("Starter", 2), new RoleRequirement("Custom:Fusion line", 0, 1)], RequireDistinctCards: false),
+            Scenario.AllOf("x", [Requirement.ForRole("Starter"), Requirement.ForRole("Extender")], RequireDistinctCards: true),
+            Scenario.AllOf("y", [Requirement.ForRole("Brick", 0, 0)]),
+            Scenario.AllOf("z", [Requirement.ForRole("Starter", 2), Requirement.ForRole("Custom:Fusion line", 0, 1)], RequireDistinctCards: false),
         ], samples: 10));
 
-        Assert.Equal("Hand contains at least 2 starters AND at most 1 \"Fusion line\" card (one card can count toward several roles)", result.Scenarios[2].Description);
+        Assert.Equal("Hand contains at least 2 starters AND at most 1 \"Fusion line\" card", result.Scenarios[2].Description);
 
         Assert.Equal("Hand contains at least 1 starter AND at least 1 extender (each minimum met by different cards)", result.Scenarios[0].Description);
         Assert.Equal("Hand contains no bricks", result.Scenarios[1].Description);
@@ -278,9 +278,9 @@ public sealed class SimulationEngineTests
             { "duplicate keys", ok with { Deck = [Card("A", 1), Card("A", 1)] } },
             { "zero quantity", ok with { Deck = [Card("A", 0)] } },
             { "min above hand", ok with { Scenarios = [AtLeast("Starter", 6)] } },
-            { "max below min", ok with { Scenarios = [new Scenario("x", [new RoleRequirement("Starter", 2, 1)])] } },
-            { "no-op requirement", ok with { Scenarios = [new Scenario("x", [new RoleRequirement("Starter", 0)])] } },
-            { "no requirements", ok with { Scenarios = [new Scenario("x", [])] } },
+            { "max below min", ok with { Scenarios = [Scenario.AllOf("x", [Requirement.ForRole("Starter", 2, 1)])] } },
+            { "no-op requirement", ok with { Scenarios = [Scenario.AllOf("x", [Requirement.ForRole("Starter", 0)])] } },
+            { "no requirements", ok with { Scenarios = [Scenario.AllOf("x", [])] } },
             { "negative sample hands", ok with { SampleHandCount = -1 } },
         };
     }

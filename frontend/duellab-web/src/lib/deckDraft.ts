@@ -1,4 +1,4 @@
-import type { Card, DeckZone, VersionDetail } from '@/api/types'
+import type { Card, ComboPiece, DeckZone, VersionDetail } from '@/api/types'
 
 /**
  * The client-side working copy of a deck version. The editor changes the draft freely; nothing
@@ -10,6 +10,14 @@ export interface DeckDraft {
   entries: DraftEntry[]
   roles: Record<number, string[]>
   cards: Record<number, Card>
+  comboLines: DraftComboLine[]
+}
+
+/** A combo line being edited. */
+export interface DraftComboLine {
+  name: string
+  notes: string | null
+  pieces: ComboPiece[]
 }
 
 export interface DraftEntry {
@@ -43,6 +51,15 @@ export function draftFromVersion(version: VersionDetail): DeckDraft {
     entries: version.cards.map((c) => ({ cardId: c.card.id, zone: c.zone, quantity: c.quantity })),
     roles,
     cards,
+    comboLines: (version.comboLines ?? []).map((l) => ({
+      name: l.name,
+      notes: l.notes,
+      pieces: l.pieces.map((p) => ({
+        cardIds: [...p.cardIds],
+        roles: [...p.roles],
+        count: p.count,
+      })),
+    })),
   }
 }
 
@@ -146,6 +163,30 @@ export function rolesPayload(draft: DeckDraft) {
     .filter((r) => inDeck.has(r.cardId) && r.roles.length > 0)
 }
 
+/** The combo lines in the shape the API expects. */
+export function comboLinesPayload(draft: DeckDraft) {
+  return (draft.comboLines ?? []).map((l) => ({
+    name: l.name.trim(),
+    notes: l.notes?.trim() ? l.notes.trim() : null,
+    pieces: l.pieces.map((p) => ({ cardIds: [...p.cardIds], roles: [...p.roles], count: p.count })),
+  }))
+}
+
+/** A problem that would make the server reject the draft's combo lines, or null. */
+export function comboLinesProblem(draft: DeckDraft): string | null {
+  const names = new Set<string>()
+  for (const line of draft.comboLines ?? []) {
+    const name = line.name.trim()
+    if (!name) return 'Every combo line needs a name.'
+    if (names.has(name.toLowerCase())) return `There is more than one combo line called "${name}".`
+    names.add(name.toLowerCase())
+    if (line.pieces.length === 0) return `Combo line "${name}" needs at least one piece.`
+    if (line.pieces.some((p) => p.cardIds.length + p.roles.length === 0))
+      return `Every piece of "${name}" needs at least one card or role.`
+  }
+  return null
+}
+
 /** A stable fingerprint of the draft's contents, used to detect unsaved changes. */
 export function fingerprint(draft: DeckDraft): string {
   const entries = [...cardsPayload(draft)].sort(
@@ -154,5 +195,5 @@ export function fingerprint(draft: DeckDraft): string {
   const roles = rolesPayload(draft)
     .map((r) => ({ cardId: r.cardId, roles: [...r.roles].sort() }))
     .sort((a, b) => a.cardId - b.cardId)
-  return JSON.stringify({ entries, roles })
+  return JSON.stringify({ entries, roles, combos: comboLinesPayload(draft) })
 }

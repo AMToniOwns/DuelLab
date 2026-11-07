@@ -12,6 +12,7 @@ internal sealed class DeckRepository(DuelLabDbContext db) : IDeckRepository
     private IQueryable<Deck> Decks => db.Decks
         .Include(d => d.Versions).ThenInclude(v => v.Cards)
         .Include(d => d.Versions).ThenInclude(v => v.Roles)
+        .Include(d => d.Versions).ThenInclude(v => v.ComboLines)
         .AsSplitQuery();
 
     public async Task<IReadOnlyList<Deck>> ListAsync(CancellationToken cancellationToken) =>

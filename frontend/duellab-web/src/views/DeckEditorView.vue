@@ -19,6 +19,7 @@ import BanBadge from '@/components/BanBadge.vue'
 import CardDetail from '@/components/CardDetail.vue'
 import CardImage from '@/components/CardImage.vue'
 import CardSearch from '@/components/CardSearch.vue'
+import ComboLineEditor from '@/components/ComboLineEditor.vue'
 import ModalDialog from '@/components/ModalDialog.vue'
 import ValidationPanel from '@/components/ValidationPanel.vue'
 import { useDeckEditorStore } from '@/stores/deckEditor'
@@ -108,6 +109,18 @@ function addCustomRole(cardId: number): void {
 }
 
 const roleKeys = computed(() => availableRoles(Object.values(draft.value?.roles ?? {}).flat()))
+
+// Cards a combo line can name: everything in the version, flagged when not in the Main Deck.
+const pickableCards = computed(() => {
+  const d = draft.value
+  if (!d) return []
+  const ids = [...new Set(d.entries.map((e) => e.cardId))]
+  return ids.map((id) => ({
+    id,
+    name: d.cards[id]?.name ?? `Card #${id}`,
+    inMain: d.entries.some((e) => e.cardId === id && e.zone === 'Main'),
+  }))
+})
 const roleSummary = computed(() =>
   roleKeys.value
     .map((key) => ({
@@ -385,6 +398,14 @@ async function simulate(): Promise<void> {
                 </div>
               </li>
             </ul>
+          </div>
+          <div class="card p-3">
+            <ComboLineEditor
+              v-model="draft.comboLines"
+              :roles="roleKeys"
+              :cards="pickableCards"
+              @changed="editor.touched()"
+            />
           </div>
         </section>
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DuelLab.Domain.Decks;
 using DuelLab.Domain.Simulations;
 using Microsoft.EntityFrameworkCore;
@@ -37,7 +38,37 @@ internal sealed class DeckVersionConfiguration : IEntityTypeConfiguration<DeckVe
         builder.HasMany(v => v.Roles).WithOne().HasForeignKey(r => r.DeckVersionId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(v => v.Roles).UsePropertyAccessMode(PropertyAccessMode.Field);
 
+        builder.HasMany(v => v.ComboLines).WithOne().HasForeignKey(l => l.DeckVersionId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(v => v.ComboLines).UsePropertyAccessMode(PropertyAccessMode.Field);
+
         builder.HasMany<SimulationRun>().WithOne().HasForeignKey(r => r.DeckVersionId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class DeckVersionComboLineConfiguration : IEntityTypeConfiguration<DeckVersionComboLine>
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public void Configure(EntityTypeBuilder<DeckVersionComboLine> builder)
+    {
+        builder.ToTable("deck_version_combo_lines");
+        builder.HasKey(l => l.Id);
+        builder.Property(l => l.Id).ValueGeneratedNever();
+        builder.Property(l => l.Name).HasMaxLength(DeckRules.MaxNameLength).IsRequired();
+        builder.Property(l => l.Notes).HasMaxLength(DeckRules.MaxNotesLength);
+        builder.HasIndex(l => new { l.DeckVersionId, l.Position });
+
+        // Pieces are a small value list that is always read and written with its line: store as jsonb.
+        builder.Property(l => l.Pieces)
+            .HasColumnType("jsonb")
+            .HasConversion(
+                pieces => JsonSerializer.Serialize(pieces, Json),
+                json => JsonSerializer.Deserialize<List<ComboPiece>>(json, Json) ?? new List<ComboPiece>(),
+                new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<IReadOnlyList<ComboPiece>>(
+                    (a, b) => JsonSerializer.Serialize(a, Json) == JsonSerializer.Serialize(b, Json),
+                    v => JsonSerializer.Serialize(v, Json).GetHashCode(StringComparison.Ordinal),
+                    v => v.ToList()))
+            .IsRequired();
     }
 }
 

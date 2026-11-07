@@ -34,6 +34,7 @@ export function version(cards: VersionDetail['cards'] = []): VersionDetail {
     createdAt: '2026-11-07T00:00:00Z',
     updatedAt: '2026-11-07T00:00:00Z',
     cards,
+    comboLines: [],
     validation: { isValid: false, mainCount: 0, extraCount: 0, sideCount: 0, issues: [] },
   }
 }

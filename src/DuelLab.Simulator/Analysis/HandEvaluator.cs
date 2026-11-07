@@ -9,29 +9,34 @@ namespace DuelLab.Simulator.Analysis;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A hand is summarised by how many of its cards fall into each <em>role group</em>: cards with exactly
-/// the same set of (relevant) roles are interchangeable for evaluation. Working on group counts rather
-/// than individual cards lets the same code serve both the Monte Carlo loop and exact enumeration.
+/// Every role and card a scenario refers to is an <em>atom</em> with its own bit. A card's mask holds
+/// the bits of the atoms it matches (its relevant roles, and its own bit if a requirement names it), and
+/// a requirement's mask holds the bits of its targets; a card matches a requirement when the masks
+/// intersect. Cards with the same mask are interchangeable, so a hand is summarised by how many of its
+/// cards fall into each <em>group</em> of equal masks. The same code serves the Monte Carlo loop and
+/// exact enumeration.
 /// </para>
 /// <para>
-/// With distinct-card semantics, minimum requirements form a supply–demand problem: each card can serve
-/// one requirement whose role it has. By Hall's theorem (in its supply–demand form) the requirements
-/// can all be met if and only if, for every subset S of requirements, the cards that can serve some
-/// requirement in S are at least as many as S needs in total. With at most
-/// <see cref="MaxRequirementsPerScenario"/> requirements, checking every subset is cheap and exact.
+/// With distinct-card semantics, the minimums of a clause form a supply–demand problem: each card can
+/// serve one requirement it matches. By Hall's theorem (supply–demand form) they can all be met if and
+/// only if, for every subset S of requirements, the cards matching the union of S's targets are at least
+/// as many as S needs in total. With at most <see cref="MaxRequirementsPerClause"/> requirements,
+/// checking every subset is cheap and exact.
 /// </para>
 /// </remarks>
 internal sealed class HandEvaluator
 {
-    public const int MaxRequirementsPerScenario = 10;
+    public const int MaxRequirementsPerClause = 10;
 
-    private readonly ulong[] _groupMasks;
-    private readonly CompiledScenario[] _scenarios;
+    public const int MaxClausesPerScenario = 16;
 
-    public HandEvaluator(ulong[] groupMasks, IReadOnlyList<Scenario> scenarios, IReadOnlyDictionary<string, int> roleBits)
+    private readonly UInt128[] _groupMasks;
+    private readonly CompiledClause[][] _scenarios;
+
+    public HandEvaluator(UInt128[] groupMasks, IReadOnlyList<Scenario> scenarios, Func<Requirement, UInt128> maskOf)
     {
         _groupMasks = groupMasks;
-        _scenarios = scenarios.Select(s => Compile(s, roleBits)).ToArray();
+        _scenarios = scenarios.Select(s => s.AnyOf.Select(c => Compile(c, maskOf)).ToArray()).ToArray();
     }
 
     public int ScenarioCount => _scenarios.Length;
@@ -39,9 +44,20 @@ internal sealed class HandEvaluator
     /// <summary>True when a hand with the given per-group card counts meets scenario <paramref name="index"/>.</summary>
     public bool Meets(int index, ReadOnlySpan<int> groupCounts)
     {
-        var scenario = _scenarios[index];
+        foreach (var clause in _scenarios[index])
+        {
+            if (Meets(clause, groupCounts))
+            {
+                return true;
+            }
+        }
 
-        foreach (var (mask, maximum) in scenario.Maximums)
+        return false;
+    }
+
+    private bool Meets(CompiledClause clause, ReadOnlySpan<int> groupCounts)
+    {
+        foreach (var (mask, maximum) in clause.Maximums)
         {
             if (CountMatching(mask, groupCounts) > maximum)
             {
@@ -49,9 +65,9 @@ internal sealed class HandEvaluator
             }
         }
 
-        if (!scenario.RequireDistinct)
+        if (!clause.RequireDistinct)
         {
-            foreach (var (mask, minimum) in scenario.Minimums)
+            foreach (var (mask, minimum) in clause.Minimums)
             {
                 if (CountMatching(mask, groupCounts) < minimum)
                 {
@@ -63,9 +79,9 @@ internal sealed class HandEvaluator
         }
 
         // Distinct cards: check Hall's condition for every non-empty subset of minimum requirements.
-        for (var subset = 1; subset < scenario.SubsetDemand.Length; subset++)
+        for (var subset = 1; subset < clause.SubsetDemand.Length; subset++)
         {
-            if (CountMatching(scenario.SubsetMask[subset], groupCounts) < scenario.SubsetDemand[subset])
+            if (CountMatching(clause.SubsetMask[subset], groupCounts) < clause.SubsetDemand[subset])
             {
                 return false;
             }
@@ -75,33 +91,59 @@ internal sealed class HandEvaluator
     }
 
     /// <summary>A plain-language description of a scenario.</summary>
-    public static string Describe(Scenario scenario)
+    /// <param name="scenario">The scenario.</param>
+    /// <param name="cardName">Display name for a card key, or null if the card is not in the deck.</param>
+    public static string Describe(Scenario scenario, Func<string, string?> cardName)
     {
-        var parts = scenario.Requirements.Select(r =>
+        if (scenario.AnyOf.Count == 1)
         {
-            string Role(int n) => RoleLabel(r.Role, plural: n != 1);
-            return r.MaximumCount switch
-            {
-                null => $"at least {r.MinimumCount} {Role(r.MinimumCount)}",
-                0 when r.MinimumCount == 0 => $"no {Role(0)}",
-                { } max when max == r.MinimumCount => $"exactly {max} {Role(max)}",
-                { } max when r.MinimumCount == 0 => $"at most {max} {Role(max)}",
-                { } max => $"{r.MinimumCount}–{max} {Role(max)}",
-            };
-        }).ToList();
+            return "Hand contains " + DescribeClause(scenario.AnyOf[0], cardName, inGroup: false);
+        }
 
-        var text = new StringBuilder("Hand contains ");
-        text.Append(string.Join(" AND ", parts));
+        return "Hand contains either " + string.Join(
+            ", or ",
+            scenario.AnyOf.Select(c => c.Requirements.Count > 1 ? $"({DescribeClause(c, cardName, inGroup: true)})" : DescribeClause(c, cardName, inGroup: true)));
+    }
 
-        var minimums = scenario.Requirements.Count(r => r.MinimumCount > 0);
-        if (minimums > 1 || scenario.Requirements.Any(r => r.MinimumCount > 1))
+    private static string DescribeClause(Clause clause, Func<string, string?> cardName, bool inGroup)
+    {
+        var text = new StringBuilder(string.Join(" AND ", clause.Requirements.Select(r => DescribeRequirement(r, cardName))));
+
+        // The distinct/overlapping choice only matters when two or more minimums compete for cards.
+        if (clause.Requirements.Count(r => r.MinimumCount > 0) > 1)
         {
-            text.Append(scenario.RequireDistinctCards
-                ? " (each minimum met by different cards)"
-                : " (one card can count toward several roles)");
+            text.Append(clause.RequireDistinctCards
+                ? inGroup ? ", from different cards" : " (each minimum met by different cards)"
+                : inGroup ? ", cards may count twice" : " (one card can count toward several roles)");
         }
 
         return text.ToString();
+    }
+
+    private static string DescribeRequirement(Requirement r, Func<string, string?> cardName)
+    {
+        var count = r.MaximumCount ?? r.MinimumCount;
+        string target;
+        if (r.Roles.Count == 1 && r.Cards.Count == 0)
+        {
+            target = RoleLabel(r.Roles[0], plural: count != 1);
+        }
+        else
+        {
+            var options = r.Cards.Select(k => cardName(k) ?? "a card not in the Main Deck")
+                .Concat(r.Roles.Select(role => "any " + RoleLabel(role)))
+                .ToList();
+            target = "of " + (options.Count == 1 ? options[0] : string.Join(", ", options[..^1]) + " or " + options[^1]);
+        }
+
+        return r.MaximumCount switch
+        {
+            null => $"at least {r.MinimumCount} {target}",
+            0 when r.MinimumCount == 0 => target.StartsWith("of ", StringComparison.Ordinal) ? $"none {target}" : $"no {target}",
+            { } max when max == r.MinimumCount => $"exactly {max} {target}",
+            { } max when r.MinimumCount == 0 => $"at most {max} {target}",
+            { } max => $"{r.MinimumCount}–{max} {target}",
+        };
     }
 
     internal static string RoleLabel(string roleKey, bool plural = false)
@@ -121,12 +163,12 @@ internal sealed class HandEvaluator
         return plural ? label + "s" : label;
     }
 
-    private int CountMatching(ulong roleMask, ReadOnlySpan<int> groupCounts)
+    private int CountMatching(UInt128 mask, ReadOnlySpan<int> groupCounts)
     {
         var total = 0;
         for (var g = 0; g < groupCounts.Length; g++)
         {
-            if ((_groupMasks[g] & roleMask) != 0)
+            if ((_groupMasks[g] & mask) != UInt128.Zero)
             {
                 total += groupCounts[g];
             }
@@ -135,15 +177,13 @@ internal sealed class HandEvaluator
         return total;
     }
 
-    private static CompiledScenario Compile(Scenario scenario, IReadOnlyDictionary<string, int> roleBits)
+    private static CompiledClause Compile(Clause clause, Func<Requirement, UInt128> maskOf)
     {
-        ulong Bit(string role) => 1UL << roleBits[role];
-
-        var minimums = scenario.Requirements.Where(r => r.MinimumCount > 0).Select(r => (Bit(r.Role), r.MinimumCount)).ToArray();
-        var maximums = scenario.Requirements.Where(r => r.MaximumCount is not null).Select(r => (Bit(r.Role), r.MaximumCount!.Value)).ToArray();
+        var minimums = clause.Requirements.Where(r => r.MinimumCount > 0).Select(r => (maskOf(r), r.MinimumCount)).ToArray();
+        var maximums = clause.Requirements.Where(r => r.MaximumCount is not null).Select(r => (maskOf(r), r.MaximumCount!.Value)).ToArray();
 
         var subsetCount = 1 << minimums.Length;
-        var subsetMask = new ulong[subsetCount];
+        var subsetMask = new UInt128[subsetCount];
         var subsetDemand = new int[subsetCount];
         for (var subset = 1; subset < subsetCount; subset++)
         {
@@ -153,13 +193,13 @@ internal sealed class HandEvaluator
             subsetDemand[subset] = subsetDemand[rest] + minimums[lowest].MinimumCount;
         }
 
-        return new CompiledScenario(scenario.RequireDistinctCards, minimums, maximums, subsetMask, subsetDemand);
+        return new CompiledClause(clause.RequireDistinctCards, minimums, maximums, subsetMask, subsetDemand);
     }
 
-    private sealed record CompiledScenario(
+    private sealed record CompiledClause(
         bool RequireDistinct,
-        (ulong Mask, int MinimumCount)[] Minimums,
-        (ulong Mask, int MaximumCount)[] Maximums,
-        ulong[] SubsetMask,
+        (UInt128 Mask, int MinimumCount)[] Minimums,
+        (UInt128 Mask, int MaximumCount)[] Maximums,
+        UInt128[] SubsetMask,
         int[] SubsetDemand);
 }

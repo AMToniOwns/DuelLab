@@ -46,6 +46,11 @@ public sealed class SimulationService(
     {
         var (deck, version) = await deckService.LoadVersionAsync(versionId, cancellationToken);
         var config = Normalize(request ?? new SimulationConfigDto());
+        if (config.IncludeComboLines)
+        {
+            config = config with { Scenarios = WithComboLines(config.Scenarios!, version.ComboLines) };
+        }
+
         var snapshot = await CreateSnapshotAsync(deck, version, cancellationToken);
         var result = Execute(config, snapshot);
 
@@ -140,8 +145,21 @@ public sealed class SimulationService(
             throw new RequestValidationException("compare.same_version", "Choose two different versions to compare.");
         }
 
-        // Resolve the seed once so both versions use the same random stream.
+        var (_, baseVersion) = await deckService.LoadVersionAsync(request.BaseVersionId, cancellationToken);
+        var (_, candidateVersion) = await deckService.LoadVersionAsync(request.CandidateVersionId, cancellationToken);
+
+        // Resolve the seed once so both versions use the same random stream, and measure one shared
+        // set of combo lines on both (the base version's, then any only the candidate has), so every
+        // scenario lines up.
         var config = Normalize(request.Configuration ?? new SimulationConfigDto());
+        if (config.IncludeComboLines)
+        {
+            var shared = baseVersion.ComboLines
+                .Concat(candidateVersion.ComboLines.Where(c => !baseVersion.ComboLines.Any(b => string.Equals(b.Name, c.Name, StringComparison.OrdinalIgnoreCase))))
+                .ToList();
+            config = config with { Scenarios = WithComboLines(config.Scenarios!, shared), IncludeComboLines = false };
+        }
+
         var baseRun = await RunAsync(request.BaseVersionId, config, cancellationToken);
         var candidateRun = await RunAsync(request.CandidateVersionId, config, cancellationToken);
 
@@ -155,11 +173,64 @@ public sealed class SimulationService(
             c.Estimate,
             (c.Estimate - b.Estimate) * 100)).ToList();
 
-        var (_, baseVersion) = await deckService.LoadVersionAsync(request.BaseVersionId, cancellationToken);
-        var (_, candidateVersion) = await deckService.LoadVersionAsync(request.CandidateVersionId, cancellationToken);
         var (cardChanges, roleChanges) = await DiffAsync(baseVersion, candidateVersion, cancellationToken);
 
-        return new ComparisonDto(baseRun, candidateRun, scenarios, cardChanges, roleChanges);
+        return new ComparisonDto(baseRun, candidateRun, scenarios, cardChanges, roleChanges, ComboDiff(baseVersion, candidateVersion));
+    }
+
+    /// <summary>Scenario name prefix for combo lines.</summary>
+    public const string ComboPrefix = "Combo: ";
+
+    /// <summary>Name of the scenario that is met when any combo line is.</summary>
+    public const string AnyComboName = "Any combo line";
+
+    /// <summary>
+    /// Adds one scenario per combo line (all pieces, from different cards) and, with two or more lines,
+    /// one that is met when any line is. Scenarios whose names are already present are left alone.
+    /// </summary>
+    private static List<ScenarioDto> WithComboLines(IReadOnlyList<ScenarioDto> scenarios, IReadOnlyList<DeckVersionComboLine> lines)
+    {
+        static List<RequirementDto> Pieces(DeckVersionComboLine line) =>
+            line.Pieces.Select(p => new RequirementDto(MinimumCount: p.Count, Roles: p.Roles, CardIds: p.CardIds)).ToList();
+
+        var result = scenarios.ToList();
+        bool Has(string name) => result.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        var ordered = lines.OrderBy(l => l.Position).ToList();
+
+        foreach (var line in ordered)
+        {
+            if (!Has(ComboPrefix + line.Name))
+            {
+                result.Add(new ScenarioDto(ComboPrefix + line.Name, Pieces(line), RequireDistinctCards: true));
+            }
+        }
+
+        if (ordered.Count >= 2 && !Has(AnyComboName))
+        {
+            result.Add(new ScenarioDto(AnyComboName, AnyOf: ordered.Select(l => new ClauseDto(Pieces(l), RequireDistinctCards: true)).ToList()));
+        }
+
+        return result;
+    }
+
+    private static List<ComboLineChangeDto> ComboDiff(DeckVersion a, DeckVersion b)
+    {
+        static string Shape(DeckVersionComboLine l) => JsonSerializer.Serialize(l.Pieces, JsonDefaults.Options);
+        var before = a.ComboLines.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
+        var after = b.ComboLines.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
+
+        return before.Keys.Union(after.Keys, StringComparer.OrdinalIgnoreCase)
+            .Select(name => (name, change: (before.TryGetValue(name, out var x), after.TryGetValue(name, out var y)) switch
+            {
+                (false, true) => "added",
+                (true, false) => "removed",
+                _ when Shape(before[name]) != Shape(after[name]) => "changed",
+                _ => null,
+            }))
+            .Where(c => c.change is not null)
+            .OrderBy(c => c.name, StringComparer.OrdinalIgnoreCase)
+            .Select(c => new ComboLineChangeDto(after.TryGetValue(c.name, out var l) ? l.Name : before[c.name].Name, c.change!))
+            .ToList();
     }
 
     private async Task<(List<CardChangeDto>, List<RoleChangeDto>)> DiffAsync(DeckVersion a, DeckVersion b, CancellationToken cancellationToken)
@@ -212,17 +283,32 @@ public sealed class SimulationService(
         }
 
         var scenarios = config.Scenarios is { Count: > 0 } given ? given : DefaultScenarios;
-        foreach (var requirement in scenarios.SelectMany(s => s.Requirements ?? []))
+        foreach (var scenario in scenarios)
         {
-            // Rejects unknown role keys with a clear message; also normalises their spelling.
-            _ = CardRole.Parse(requirement.Role);
+            if ((scenario.Requirements is { Count: > 0 }) == (scenario.AnyOf is { Count: > 0 }))
+            {
+                throw new RequestValidationException(
+                    "simulation.scenario_shape",
+                    $"Scenario '{scenario.Name}' needs either a list of requirements or a list of alternatives (anyOf), not both or neither.");
+            }
         }
+
+        static RequirementDto NormalizeRequirement(RequirementDto r) => r with
+        {
+            // Parsing rejects unknown role keys with a clear message and normalises their spelling.
+            Role = r.Role is null ? null : CardRole.Parse(r.Role).Key,
+            Roles = r.Roles?.Select(role => CardRole.Parse(role).Key).ToList(),
+        };
 
         return config with
         {
             Seed = config.Seed ?? Random.Shared.NextInt64(0, MaxSeed + 1),
             Scenarios = scenarios
-                .Select(s => s with { Requirements = (s.Requirements ?? []).Select(r => r with { Role = CardRole.Parse(r.Role).Key }).ToList() })
+                .Select(s => s with
+                {
+                    Requirements = s.Requirements?.Select(NormalizeRequirement).ToList(),
+                    AnyOf = s.AnyOf?.Select(c => c with { Requirements = (c.Requirements ?? []).Select(NormalizeRequirement).ToList() }).ToList(),
+                })
                 .ToList(),
             SampleHandCount = config.SampleHandCount ?? DefaultSampleHandCount,
         };
@@ -235,10 +321,7 @@ public sealed class SimulationService(
             config.OpeningHandSize,
             config.SampleCount,
             config.Seed!.Value,
-            config.Scenarios!.Select(s => new Scenario(
-                s.Name,
-                s.Requirements.Select(r => new RoleRequirement(r.Role, r.MinimumCount, r.MaximumCount)).ToList(),
-                s.RequireDistinctCards)).ToList(),
+            config.Scenarios!.Select(ToScenario).ToList(),
             config.SampleHandCount!.Value);
 
         try
@@ -249,6 +332,20 @@ public sealed class SimulationService(
         {
             throw new RequestValidationException("simulation.invalid", ex.Message.Split(" (Parameter")[0]);
         }
+    }
+
+    /// <summary>Maps an API scenario onto the engine's OR-of-AND model.</summary>
+    private static Scenario ToScenario(ScenarioDto s)
+    {
+        static Requirement ToRequirement(RequirementDto r) => new(
+            (r.Role is null ? [] : new[] { r.Role }).Concat(r.Roles ?? []).Distinct(StringComparer.Ordinal).ToList(),
+            (r.CardIds ?? []).Distinct().Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList(),
+            r.MinimumCount,
+            r.MaximumCount);
+
+        return s.AnyOf is { Count: > 0 } alternatives
+            ? new Scenario(s.Name, alternatives.Select(c => new Clause((c.Requirements ?? []).Select(ToRequirement).ToList(), c.RequireDistinctCards)).ToList())
+            : Scenario.AllOf(s.Name, (s.Requirements ?? []).Select(ToRequirement).ToList(), s.RequireDistinctCards);
     }
 
     private async Task<DeckSnapshot> CreateSnapshotAsync(Deck deck, DeckVersion version, CancellationToken cancellationToken)

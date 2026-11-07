@@ -4,6 +4,8 @@ import { api } from '@/api/client'
 import type { Validation, VersionDetail } from '@/api/types'
 import {
   cardsPayload,
+  comboLinesPayload,
+  comboLinesProblem,
   draftFromVersion,
   fingerprint,
   rolesPayload,
@@ -19,7 +21,13 @@ interface StoredDraft {
 
 function readStorage(): Record<string, StoredDraft> {
   try {
-    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, StoredDraft>
+    const stored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '{}') as Record<
+      string,
+      StoredDraft
+    >
+    // Drafts saved before combo lines existed have no list.
+    for (const value of Object.values(stored)) value.draft.comboLines ??= []
+    return stored
   } catch {
     return {}
   }
@@ -76,14 +84,17 @@ export const useDeckEditorStore = defineStore('deckEditor', () => {
     return versions[versionId]?.validation
   }
 
-  /** Saves cards, then roles. Returns the saved version. */
+  /** Saves cards, then roles, then combo lines. Returns the saved version. */
   async function save(versionId: string): Promise<VersionDetail> {
     const stored = drafts[versionId]
     if (!stored) throw new Error('Nothing to save.')
+    const problem = comboLinesProblem(stored.draft)
+    if (problem) throw new Error(problem)
     saving.value = true
     try {
       await api.versions.saveCards(versionId, cardsPayload(stored.draft))
-      const saved = await api.versions.saveRoles(versionId, rolesPayload(stored.draft))
+      await api.versions.saveRoles(versionId, rolesPayload(stored.draft))
+      const saved = await api.versions.saveComboLines(versionId, comboLinesPayload(stored.draft))
       versions[versionId] = saved
       const fresh = draftFromVersion(saved)
       drafts[versionId] = { draft: fresh, savedFingerprint: fingerprint(fresh) }

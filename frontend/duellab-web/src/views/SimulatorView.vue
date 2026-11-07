@@ -50,6 +50,12 @@ const roleCounts = computed(() => {
   return counts
 })
 const roles = computed(() => availableRoles(Object.keys(roleCounts.value)))
+const mainCards = computed(() =>
+  (version.value?.cards ?? [])
+    .filter((c) => c.zone === 'Main')
+    .map((c) => ({ id: c.card.id, name: c.card.name, inMain: true })),
+)
+const comboLines = computed(() => version.value?.comboLines ?? [])
 const errors = computed(
   () => version.value?.validation.issues.filter((i) => i.severity === 'Error') ?? [],
 )
@@ -134,14 +140,37 @@ async function run(): Promise<void> {
     <section class="card p-4" aria-labelledby="scenarios-heading">
       <h2 id="scenarios-heading" class="mb-1 font-semibold">Scenarios</h2>
       <p class="mb-3 text-sm text-ink-2">
-        Each scenario is met when every one of its requirements holds.
+        A scenario is met when any of its alternatives ("Or…") holds, and an alternative when all of
+        its requirements do. A requirement can look for roles, specific cards, or either.
       </p>
       <ScenarioEditor
         v-model="config.scenarios"
         :roles="roles"
         :role-counts="roleCounts"
+        :cards="mainCards"
         @reset="config.resetScenarios()"
       />
+
+      <div class="mt-4 border-t border-line pt-3">
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="config.includeComboLines" type="checkbox" data-testid="include-combos" />
+          Also measure this version's combo lines
+          <span class="text-ink-muted">({{ comboLines.length }})</span>
+        </label>
+        <p v-if="config.includeComboLines && comboLines.length" class="mt-1 text-xs text-ink-2">
+          Adds a scenario per line<template v-if="comboLines.length > 1">
+            and "Any combo line"</template
+          >: {{ comboLines.map((l) => l.name).join(', ') }}.
+        </p>
+        <p v-else-if="version && comboLines.length === 0" class="mt-1 text-xs text-ink-muted">
+          Define combo lines in the
+          <RouterLink
+            :to="{ name: 'editor', params: { versionId: version.id } }"
+            class="text-accent underline"
+            >deck editor</RouterLink
+          >.
+        </p>
+      </div>
     </section>
 
     <div class="flex justify-end">

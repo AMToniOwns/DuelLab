@@ -214,6 +214,37 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                     b.ToTable("deck_version_card_roles", (string)null);
                 });
 
+            modelBuilder.Entity("DuelLab.Domain.Decks.DeckVersionComboLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DeckVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Pieces")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeckVersionId", "Position");
+
+                    b.ToTable("deck_version_combo_lines", (string)null);
+                });
+
             modelBuilder.Entity("DuelLab.Domain.Simulations.SimulationRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -308,6 +339,15 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("DuelLab.Domain.Decks.DeckVersionComboLine", b =>
+                {
+                    b.HasOne("DuelLab.Domain.Decks.DeckVersion", null)
+                        .WithMany("ComboLines")
+                        .HasForeignKey("DeckVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("DuelLab.Domain.Simulations.SimulationRun", b =>
                 {
                     b.HasOne("DuelLab.Domain.Decks.DeckVersion", null)
@@ -325,6 +365,8 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DuelLab.Domain.Decks.DeckVersion", b =>
                 {
                     b.Navigation("Cards");
+
+                    b.Navigation("ComboLines");
 
                     b.Navigation("Roles");
                 });

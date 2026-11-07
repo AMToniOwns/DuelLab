@@ -6,8 +6,13 @@
   replacement**. Every physical copy is equally likely. Extra and Side Deck cards are never drawn.
 - Each copy carries the **roles you assigned** to its card in that version. Roles are your own
   labels, not game rules.
-- A **scenario** is a list of requirements that must all hold (logical AND). Each requirement says
-  a hand has at least *m* (and optionally at most *M*) cards with a role.
+- A **scenario** is met when **any** of its alternatives holds (logical OR); an alternative holds
+  when **all** of its requirements do (logical AND). Each requirement says a hand has at least *m*
+  (and optionally at most *M*) cards that **match**: cards with any of the chosen roles, or that are
+  any of the chosen cards.
+- A **combo line** is a scenario built from a deck's saved line: one requirement per piece ("1 of
+  Ash, Diabellstar or Original Sinful Spoils"), all needed, from different cards. "Any combo line" is
+  the OR of all lines.
 
 ### Distinct cards or overlapping roles
 
@@ -21,11 +26,13 @@ than one. Each scenario states it explicitly:
   subset.
 - **Overlapping.** One card counts toward every role it has.
 
-Maximums always count every card with the role ("at most 0 bricks").
+Maximums always count every matching card ("at most 0 bricks"). The same card named in two pieces
+needs two different copies. Each alternative of an OR scenario has its own setting.
 
 ## Exact and simulated values
 
-**Exact.** For one role, P(at least *m*) is the hypergeometric tail; for example, 9 starters in 40
+**Exact.** Every role and card a run refers to gets a bit; cards that match exactly the same set
+are interchangeable, so they form one group. For one role, P(at least *m*) is the hypergeometric tail; for example, 9 starters in 40
 cards with a 5-card hand gives 1 − C(31,5)/C(40,5) = 74.18%. For scenarios with several roles,
 cards are grouped by the set of relevant roles they carry, and the engine sums the multivariate
 hypergeometric probability of every possible count of each group in the hand (a few hundred
@@ -60,9 +67,13 @@ sample hand matches exactly.
 
 ## Limitations
 
-- **Not a combo engine.** A hand that meets "starter + extender" contains cards you labelled that
-  way. Whether it can actually make your end board depends on rules, ordering and interaction that
-  DuelLab does not model.
+- **Not a combo engine.** A hand that meets "starter + extender", or a combo line, contains the
+  cards you listed. Whether it can actually make your end board depends on rules, ordering, costs,
+  once-per-turn limits and the opponent, none of which DuelLab models. The opening hand has no
+  order, so a line is checked as "all pieces present", not as steps.
+- **You define what "searches it" means.** Listing a searcher as an option of a piece says the
+  searcher is as good as the piece. DuelLab does not check that it can actually find it (for
+  example, that the target is still in the deck).
 - **Opening hand only.** No draws after the first hand, no searchers resolving, no mulligans, no
   "draw on turn 1 going second" except by choosing a hand size of 6.
 - **Labels are subjective.** The result is only as meaningful as the roles you assign.

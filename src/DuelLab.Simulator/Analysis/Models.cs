@@ -8,24 +8,51 @@ namespace DuelLab.Simulator.Analysis;
 public sealed record AnalysisCard(string Key, string Name, int Quantity, IReadOnlyCollection<string> Roles);
 
 /// <summary>
-/// A bound on how many cards with a given role a hand contains.
+/// A bound on how many cards in the hand match a target. A card matches when it has <em>any</em> of
+/// <paramref name="Roles"/> or <em>is</em> one of <paramref name="Cards"/> (logical OR).
 /// </summary>
-/// <param name="Role">The role key.</param>
-/// <param name="MinimumCount">The hand needs at least this many cards with the role.</param>
+/// <param name="Roles">Role keys, e.g. <c>Starter</c> or <c>Custom:Fusion line</c>.</param>
+/// <param name="Cards">Card keys (see <see cref="AnalysisCard.Key"/>). Keys not in the deck match nothing.</param>
+/// <param name="MinimumCount">The hand needs at least this many matching cards.</param>
 /// <param name="MaximumCount">If set, the hand may hold at most this many (e.g. 0 bricks).</param>
-public sealed record RoleRequirement(string Role, int MinimumCount = 1, int? MaximumCount = null);
+public sealed record Requirement(
+    IReadOnlyList<string> Roles,
+    IReadOnlyList<string> Cards,
+    int MinimumCount = 1,
+    int? MaximumCount = null)
+{
+    /// <summary>A requirement on a single role.</summary>
+    public static Requirement ForRole(string role, int minimumCount = 1, int? maximumCount = null) =>
+        new([role], [], minimumCount, maximumCount);
+
+    /// <summary>A requirement satisfied by any of the given cards.</summary>
+    public static Requirement ForCards(IReadOnlyList<string> cards, int minimumCount = 1, int? maximumCount = null) =>
+        new([], cards, minimumCount, maximumCount);
+}
 
 /// <summary>
-/// A named condition that a hand either meets or does not: every requirement must hold (logical AND).
+/// A group of requirements that must all hold (logical AND).
 /// </summary>
-/// <param name="Name">A short label, e.g. "Starter + extender".</param>
-/// <param name="Requirements">The requirements; all must hold.</param>
+/// <param name="Requirements">The requirements.</param>
 /// <param name="RequireDistinctCards">
 /// When true (the default), minimum counts must be met by <em>different physical cards</em>: a card that
 /// is both a Starter and an Extender can count as one or the other, not both. When false, one card
-/// counts toward every role it has. Maximum counts always count every card with the role.
+/// counts toward every requirement it matches. Maximum counts always count every matching card.
 /// </param>
-public sealed record Scenario(string Name, IReadOnlyList<RoleRequirement> Requirements, bool RequireDistinctCards = true);
+public sealed record Clause(IReadOnlyList<Requirement> Requirements, bool RequireDistinctCards = true);
+
+/// <summary>
+/// A named condition that a hand either meets or does not: it is met when <em>any</em> of its clauses
+/// holds (logical OR), and a clause holds when all of its requirements do (logical AND).
+/// </summary>
+/// <param name="Name">A short label, e.g. "Starter + extender".</param>
+/// <param name="AnyOf">The alternative clauses; at least one.</param>
+public sealed record Scenario(string Name, IReadOnlyList<Clause> AnyOf)
+{
+    /// <summary>A scenario with a single clause: every requirement must hold.</summary>
+    public static Scenario AllOf(string name, IReadOnlyList<Requirement> requirements, bool RequireDistinctCards = true) =>
+        new(name, [new Clause(requirements, RequireDistinctCards)]);
+}
 
 /// <summary>Everything needed to run (and later re-run) an analysis.</summary>
 /// <param name="Deck">The Main Deck. Opening hands are drawn from these cards only.</param>

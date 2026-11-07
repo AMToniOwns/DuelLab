@@ -1,6 +1,7 @@
 import type {
   Card,
   CardKind,
+  ComboPiece,
   CatalogStatus,
   Comparison,
   DeckSummary,
@@ -99,6 +100,10 @@ export const api = {
       put<VersionDetail>(`/api/versions/${id}/cards`, { cards }),
     saveRoles: (id: string, cards: { cardId: number; roles: string[] }[]) =>
       put<VersionDetail>(`/api/versions/${id}/roles`, { cards }),
+    saveComboLines: (
+      id: string,
+      lines: { name: string; notes: string | null; pieces: ComboPiece[] }[],
+    ) => put<VersionDetail>(`/api/versions/${id}/combos`, { lines }),
     simulate: (id: string, config: SimulationConfig) =>
       post<SimulationRun>(`/api/versions/${id}/simulate`, config),
     history: (id: string, take = 20) =>
