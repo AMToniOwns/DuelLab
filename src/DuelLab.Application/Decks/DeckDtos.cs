@@ -8,6 +8,7 @@ public sealed record DeckSummaryDto(
     Guid Id,
     string Name,
     string Format,
+    Guid? BanlistId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<VersionSummaryDto> Versions);
@@ -29,6 +30,9 @@ public sealed record VersionDetailDto(
     Guid Id,
     Guid DeckId,
     string DeckName,
+    string Format,
+    Guid? BanlistId,
+    string BanlistLabel,
     string VersionName,
     string? Notes,
     Guid? ParentVersionId,
@@ -60,7 +64,10 @@ public sealed record VersionCardDto(CardDto Card, DeckZone Zone, int Quantity, I
 public sealed record ValidationDto(bool IsValid, int MainCount, int ExtraCount, int SideCount, IReadOnlyList<DeckValidationIssue> Issues);
 
 /// <summary>Request to create a deck.</summary>
-public sealed record CreateDeckRequest(string Name);
+public sealed record CreateDeckRequest(string Name, string? Format = null);
+
+/// <summary>Request to change a deck's format; <paramref name="BanlistId"/> pins TCG Advanced to a list.</summary>
+public sealed record UpdateFormatRequest(string Format, Guid? BanlistId = null);
 
 /// <summary>Request to rename a deck.</summary>
 public sealed record RenameDeckRequest(string Name);

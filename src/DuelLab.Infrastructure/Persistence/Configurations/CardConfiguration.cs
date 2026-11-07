@@ -23,3 +23,29 @@ internal sealed class CardConfiguration : IEntityTypeConfiguration<Card>
         builder.Property(c => c.SmallImageUrl).HasMaxLength(500);
     }
 }
+
+internal sealed class BanlistConfiguration : IEntityTypeConfiguration<Banlist>
+{
+    public void Configure(EntityTypeBuilder<Banlist> builder)
+    {
+        builder.ToTable("banlists");
+        builder.HasKey(b => b.Id);
+        builder.Property(b => b.Id).ValueGeneratedNever();
+        builder.Property(b => b.ProviderVersion).HasMaxLength(50);
+        builder.Property(b => b.ContentHash).HasMaxLength(64).IsRequired();
+        builder.HasIndex(b => b.FirstSeenAt);
+        builder.Ignore(b => b.Label);
+        builder.HasMany(b => b.Entries).WithOne().HasForeignKey(e => e.BanlistId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(b => b.Entries).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class BanlistEntryConfiguration : IEntityTypeConfiguration<BanlistEntry>
+{
+    public void Configure(EntityTypeBuilder<BanlistEntry> builder)
+    {
+        builder.ToTable("banlist_entries");
+        builder.HasKey(e => new { e.BanlistId, e.CardId });
+        builder.HasOne<Card>().WithMany().HasForeignKey(e => e.CardId).OnDelete(DeleteBehavior.Restrict);
+    }
+}

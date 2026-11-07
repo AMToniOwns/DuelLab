@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { api, errorMessage } from '@/api/client'
-import type { Card, CardKind, PagedResult } from '@/api/types'
+import type { BanStatus, Card, CardKind, PagedResult } from '@/api/types'
 import CardImage from './CardImage.vue'
 import BanBadge from './BanBadge.vue'
 
@@ -10,11 +10,18 @@ import BanBadge from './BanBadge.vue'
  * when its quick-add button is used.
  */
 const props = withDefaults(
-  defineProps<{ pageSize?: number; addLabel?: string; compact?: boolean }>(),
+  defineProps<{
+    pageSize?: number
+    addLabel?: string
+    compact?: boolean
+    /** The list status to show for a card (e.g. a deck's pinned list); defaults to the current list. */
+    statusOf?: (card: Card) => BanStatus
+  }>(),
   {
     pageSize: 24,
     addLabel: '',
     compact: false,
+    statusOf: (card: Card) => card.tcgBanStatus,
   },
 )
 const emit = defineEmits<{ select: [card: Card]; add: [card: Card] }>()
@@ -106,7 +113,7 @@ const totalPages = () =>
             <span class="min-w-0">
               <span class="block truncate text-sm font-medium">{{ card.name }}</span>
               <span class="flex items-center gap-1.5 truncate text-xs text-ink-muted">
-                {{ card.typeLine }} <BanBadge :status="card.tcgBanStatus" />
+                {{ card.typeLine }} <BanBadge :status="props.statusOf(card)" />
               </span>
             </span>
           </button>

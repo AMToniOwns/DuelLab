@@ -21,6 +21,9 @@ internal sealed partial class CatalogImportService(
             return;
         }
 
+        // Let the host finish starting (and apply migrations) first.
+        await Task.Yield();
+
         try
         {
             using var scope = scopes.CreateScope();
@@ -29,6 +32,12 @@ internal sealed partial class CatalogImportService(
             if (status.CardCount == 0)
             {
                 await catalog.SyncAsync(force: true, stoppingToken);
+            }
+            else
+            {
+                // Installs that imported cards before list history existed get a first snapshot from
+                // the cards' current statuses, without calling the provider.
+                await scope.ServiceProvider.GetRequiredService<Application.Banlists.BanlistService>().RecordIfChangedAsync(null, stoppingToken);
             }
         }
         catch (Exception ex) when (ex is ExternalServiceException or RequestValidationException)

@@ -41,6 +41,35 @@ internal sealed class YgoProDeckCardProvider(HttpClient http) : ICardDataProvide
 {
     public string Name => "YGOPRODeck";
 
+    /// <summary>
+    /// YGOPRODeck's database version and last-update time (checkDBVer.php). Optional: if it fails, the
+    /// import continues without it.
+    /// </summary>
+    public async Task<ProviderDataVersion?> GetDataVersionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await http.GetFromJsonAsync<List<YgoProDeckDbVersion>>("checkDBVer.php", cancellationToken);
+            var first = response?.FirstOrDefault();
+            if (first?.DatabaseVersion is null)
+            {
+                return null;
+            }
+
+            // The time zone is not documented; it is stored as UTC and shown as a date only.
+            DateTimeOffset? updated = DateTimeOffset.TryParse(
+                first.LastUpdate,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal,
+                out var parsed) ? parsed : null;
+            return new ProviderDataVersion(first.DatabaseVersion, updated);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<ExternalCard>> FetchAllCardsAsync(CancellationToken cancellationToken)
     {
         // Network errors, timeouts (including the resilience pipeline's), an open circuit breaker

@@ -40,6 +40,25 @@ public interface ICardRepository
 
     /// <summary>Adds new cards.</summary>
     void AddRange(IEnumerable<Card> cards);
+
+    /// <summary>The (card id, status) of every card whose TCG status is not Unlimited.</summary>
+    Task<List<(int CardId, BanStatus Status)>> GetListedStatusesAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Stores Forbidden &amp; Limited list snapshots.</summary>
+public interface IBanlistRepository
+{
+    /// <summary>The most recent snapshot with its entries, or null if none exists yet.</summary>
+    Task<Banlist?> GetLatestAsync(CancellationToken cancellationToken);
+
+    /// <summary>A snapshot with its entries, or null.</summary>
+    Task<Banlist?> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>All snapshots with their entries, newest first.</summary>
+    Task<IReadOnlyList<Banlist>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>Adds a snapshot.</summary>
+    void Add(Banlist banlist);
 }
 
 /// <summary>Stores simulation runs.</summary>
@@ -65,11 +84,17 @@ public interface IUnitOfWork
 /// <summary>A card as delivered by an external card-data provider, already mapped to DuelLab's terms.</summary>
 public sealed record ExternalCard(long ExternalId, CardData Data);
 
+/// <summary>The provider's own data version, when it reports one.</summary>
+public sealed record ProviderDataVersion(string Version, DateTimeOffset? UpdatedAt);
+
 /// <summary>Fetches card data from an external provider.</summary>
 public interface ICardDataProvider
 {
     /// <summary>A short name for logs and status, e.g. "YGOPRODeck".</summary>
     string Name { get; }
+
+    /// <summary>The provider's data version, or null if it does not report one.</summary>
+    Task<ProviderDataVersion?> GetDataVersionAsync(CancellationToken cancellationToken) => Task.FromResult<ProviderDataVersion?>(null);
 
     /// <summary>Downloads every card the provider offers for the supported format.</summary>
     Task<IReadOnlyList<ExternalCard>> FetchAllCardsAsync(CancellationToken cancellationToken);

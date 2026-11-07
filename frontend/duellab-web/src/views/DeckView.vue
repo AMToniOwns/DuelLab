@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
-import type { DeckSummary, SimulationRunSummary, VersionSummary } from '@/api/types'
+import type { BanlistSummary, DeckSummary, SimulationRunSummary, VersionSummary } from '@/api/types'
 import { dateTime, percent, relativeTime } from '@/lib/format'
 import AsyncState from '@/components/AsyncState.vue'
 import { useDeckEditorStore } from '@/stores/deckEditor'
@@ -18,6 +18,32 @@ const history = ref<Record<string, SimulationRunSummary[]>>({})
 const loading = ref(true)
 const error = ref<string | null>(null)
 const renaming = ref(false)
+const lists = ref<BanlistSummary[]>([])
+const olderLists = computed(() => lists.value.filter((l) => !l.isCurrent))
+const formatChoice = computed(() =>
+  deck.value?.format === 'Casual' ? 'casual' : (deck.value?.banlistId ?? 'current'),
+)
+
+async function setFormat(choice: string): Promise<void> {
+  if (!deck.value) return
+  try {
+    deck.value =
+      choice === 'casual'
+        ? await api.decks.setFormat(props.deckId, 'Casual', null)
+        : await api.decks.setFormat(
+            props.deckId,
+            'TCG Advanced',
+            choice === 'current' ? null : choice,
+          )
+    // Refresh loaded versions so the editor applies the new rules at once.
+    for (const v of deck.value.versions) {
+      if (editor.versions[v.id]) await editor.load(v.id)
+    }
+    toasts.success(choice === 'casual' ? 'Format: Casual.' : 'Format: TCG Advanced.')
+  } catch (e) {
+    toasts.error(errorMessage(e))
+  }
+}
 const name = ref('')
 
 const versions = computed(() => [...(deck.value?.versions ?? [])].reverse())
@@ -28,7 +54,10 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    deck.value = await api.decks.get(props.deckId)
+    ;[deck.value, lists.value] = await Promise.all([
+      api.decks.get(props.deckId),
+      api.banlists.list(),
+    ])
     name.value = deck.value.name
     const entries = await Promise.all(
       deck.value.versions.map(async (v) => [v.id, await api.versions.history(v.id, 5)] as const),
@@ -119,8 +148,28 @@ watch(() => props.deckId, load)
             {{ deck.name }}
             <button type="button" class="btn btn-sm" @click="renaming = true">Rename</button>
           </h1>
-          <p class="text-xs text-ink-muted">
-            {{ deck.format }} · created {{ dateTime(deck.createdAt) }}
+          <p class="text-xs text-ink-muted">created {{ dateTime(deck.createdAt) }}</p>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <label for="deck-format" class="text-ink-2">Format</label>
+            <select
+              id="deck-format"
+              class="input w-auto!"
+              :value="formatChoice"
+              data-testid="deck-format-select"
+              @change="setFormat(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="current">TCG Advanced: current Forbidden &amp; Limited list</option>
+              <option v-for="list in olderLists" :key="list.id" :value="list.id">
+                TCG Advanced: list first seen {{ new Date(list.firstSeenAt).toLocaleDateString() }}
+              </option>
+              <option value="casual">Casual: no Forbidden &amp; Limited list</option>
+            </select>
+            <RouterLink to="/banlist" class="text-xs text-accent underline"
+              >View the list</RouterLink
+            >
+          </div>
+          <p v-if="deck.format === 'Casual'" class="mt-1 text-xs text-ink-2">
+            Forbidden and Limited cards are allowed. The 3-copy rule and deck sizes still apply.
           </p>
         </div>
         <div class="flex gap-2">

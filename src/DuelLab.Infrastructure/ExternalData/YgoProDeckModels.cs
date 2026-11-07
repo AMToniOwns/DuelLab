@@ -72,6 +72,15 @@ internal sealed class YgoProDeckImage
     public string? ImageUrlSmall { get; set; }
 }
 
+internal sealed class YgoProDeckDbVersion
+{
+    [JsonPropertyName("database_version")]
+    public string? DatabaseVersion { get; set; }
+
+    [JsonPropertyName("last_update")]
+    public string? LastUpdate { get; set; }
+}
+
 internal sealed class YgoProDeckBanlist
 {
     [JsonPropertyName("ban_tcg")]

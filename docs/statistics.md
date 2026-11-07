@@ -77,5 +77,7 @@ sample hand matches exactly.
 - **Opening hand only.** No draws after the first hand, no searchers resolving, no mulligans, no
   "draw on turn 1 going second" except by choosing a hand size of 6.
 - **Labels are subjective.** The result is only as meaningful as the roles you assign.
-- **Banlist data is a snapshot** from the provider at the last sync, and is advisory. Check the
+- **The Forbidden & Limited list is the provider's.** DuelLab enforces the TCG list as YGOPRODeck
+  reports it at each import and dates each version by when DuelLab first saw it; it does not know
+  official effective dates, and it starts recording history from the day it is installed. Check the
   official list before a tournament.

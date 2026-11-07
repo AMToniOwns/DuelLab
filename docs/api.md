@@ -19,9 +19,10 @@ served at `/openapi/v1.json`. There is no authentication (see
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/decks` | All decks with version summaries, most recently updated first. |
-| POST | `/decks` | `{ name }` → 201 with the deck and its empty first version. |
+| POST | `/decks` | `{ name, format? }` → 201 with the deck and its empty first version (format defaults to TCG Advanced). |
 | GET | `/decks/{id}` | One deck. |
 | PUT | `/decks/{id}` | Rename: `{ name }`. |
+| PUT | `/decks/{id}/format` | `{ format: "TCG Advanced" \| "Casual", banlistId? }`. `banlistId` pins a TCG Advanced deck to a list snapshot; omit it to follow the current list. |
 | DELETE | `/decks/{id}` | Delete with all versions and runs → 204. |
 | POST | `/decks/{id}/versions` | `{ versionName, sourceVersionId? }`: empty version, or a copy of `sourceVersionId`. |
 | GET | `/versions/{id}` | Cards (with card details and roles) and validation. |
@@ -34,7 +35,9 @@ served at `/openapi/v1.json`. There is no authentication (see
 Saving accepts an incomplete deck (for example 25 Main Deck cards) but rejects impossible data:
 quantity below 1, the same card twice in a zone, more than 3 copies across zones, a zone over its
 maximum, unknown cards or roles. The response's `validation` lists what blocks simulation
-(`Error`) and what is only advice (`Warning`, such as the banlist snapshot).
+(`Error`, including Forbidden & Limited violations in TCG Advanced) and what is only advice
+(`Warning`, such as a combo line that uses a card no longer in the Main Deck). The response also has
+the deck's `format`, `banlistId` and a `banlistLabel` naming the list that was applied.
 
 Role keys: `Starter`, `Extender`, `Searcher`, `HandTrap`, `BoardBreaker`, `Brick`, `Custom:<name>`.
 
@@ -44,6 +47,23 @@ Role keys: `Starter`, `Extender`, `Searcher`, `HandTrap`, `BoardBreaker`, `Brick
 Names are unique per version; up to 10 pieces per line and 20 options per piece. New references must
 be cards in the version. If a card later leaves the deck, its lines keep working (and can be
 re-saved), and validation warns `combo.card_not_in_main`. Duplicating a version copies its lines.
+
+## Forbidden & Limited lists
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/banlists` | Every list snapshot DuelLab has recorded, newest first, with Forbidden/Limited/Semi-Limited counts and `isCurrent`. |
+| GET | `/banlists/current` | The current list with card names, most restricted first. |
+| GET | `/banlists/{id}` | One snapshot with card names. |
+
+A snapshot is stored whenever a card import finds the TCG list changed (and once at startup for
+installs that imported cards before history existed). YGOPRODeck does not publish effective dates, so
+a snapshot carries `firstSeenAt` plus the provider's `providerVersion` and `providerUpdatedAt` when
+available.
+
+In **TCG Advanced**, more copies than a card's status allows (Forbidden 0, Limited 1, Semi-Limited 2,
+across Main, Extra and Side Deck) is a validation **error** (`deck.banlist`), so the deck cannot be
+simulated. **Casual** decks skip the list. Each run's snapshot records the format and list used.
 
 ## Simulations
 
@@ -118,6 +138,7 @@ Every error is an RFC 9457 problem document with an extra `code`:
 | Status | Codes (examples) |
 | --- | --- |
 | 400 | `deck.name_required`, `deck.copy_limit`, `deck.zone_too_large`, `deck.duplicate_entry`, `deck.unknown_card`, `deck.last_version`, `role.unknown`, `role.card_not_in_version`, `combo.name_required`, `combo.duplicate_name`, `combo.empty_piece`, `combo.card_not_in_version`, `combo.piece_quantity`, `combo.too_many`, `simulation.invalid_deck`, `simulation.scenario_shape`, `simulation.sample_count`, `simulation.hand_size`, `simulation.seed`, `simulation.invalid`, `compare.same_version`, `cards.page_size`, `cards.sync_too_soon` |
+| 400 (formats) | `deck.unknown_format`, `deck.banlist_needs_tcg`, `deck.unknown_banlist` |
 | 404 | `not_found` (including unknown `/api` routes) |
 | 503 | `external_unavailable` (the card provider could not be reached) |
 | 500 | `internal_error` (details are logged, not returned) |

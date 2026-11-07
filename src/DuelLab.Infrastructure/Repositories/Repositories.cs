@@ -79,6 +79,14 @@ internal sealed class CardRepository(DuelLabDbContext db) : ICardRepository
 
     public void AddRange(IEnumerable<Card> cards) => db.Cards.AddRange(cards);
 
+    public async Task<List<(int CardId, BanStatus Status)>> GetListedStatusesAsync(CancellationToken cancellationToken) =>
+        (await db.Cards.AsNoTracking()
+            .Where(c => c.TcgBanStatus != BanStatus.Unlimited)
+            .Select(c => new { c.Id, c.TcgBanStatus })
+            .ToListAsync(cancellationToken))
+        .Select(c => (c.Id, c.TcgBanStatus))
+        .ToList();
+
     private static string EscapeLike(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("%", "\\%", StringComparison.Ordinal)
@@ -102,4 +110,20 @@ internal sealed class SimulationRunRepository(DuelLabDbContext db) : ISimulation
     }
 
     public void Add(SimulationRun run) => db.SimulationRuns.Add(run);
+}
+
+internal sealed class BanlistRepository(DuelLabDbContext db) : IBanlistRepository
+{
+    private IQueryable<Banlist> Lists => db.Banlists.Include(b => b.Entries);
+
+    public Task<Banlist?> GetLatestAsync(CancellationToken cancellationToken) =>
+        Lists.OrderByDescending(b => b.FirstSeenAt).FirstOrDefaultAsync(cancellationToken);
+
+    public Task<Banlist?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        Lists.FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyList<Banlist>> ListAsync(CancellationToken cancellationToken) =>
+        await Lists.AsNoTracking().OrderByDescending(b => b.FirstSeenAt).ToListAsync(cancellationToken);
+
+    public void Add(Banlist banlist) => db.Banlists.Add(banlist);
 }

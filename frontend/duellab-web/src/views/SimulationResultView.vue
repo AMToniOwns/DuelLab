@@ -244,6 +244,11 @@ const roleTotals = computed(() => {
             </p>
           </div>
           <dl class="num grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt class="text-ink-2">Format</dt>
+            <dd>
+              {{ run.snapshot.format ?? 'TCG Advanced'
+              }}<template v-if="run.snapshot.banlist"> ({{ run.snapshot.banlist }})</template>
+            </dd>
             <dt class="text-ink-2">Engine</dt>
             <dd>{{ run.engineVersion }}</dd>
             <dt class="text-ink-2">Random generator</dt>

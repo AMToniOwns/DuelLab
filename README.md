@@ -13,7 +13,11 @@ to locals.
   [YGOPRODeck](https://ygoprodeck.com/api-guide/) and searched locally. Card art is downloaded once
   and served by DuelLab, as the provider requires.
 - **Deck builder**: Main (40–60), Extra (0–15) and Side (0–15) Deck; the 3-copy rule across all
-  zones; Extra Deck placement checks; the provider's Forbidden & Limited snapshot shown as a warning.
+  zones; Extra Deck placement checks.
+- **Forbidden & Limited list**: TCG Advanced decks are checked against the TCG list (over-limit
+  decks cannot be simulated, and the editor will not add a copy past the limit); Casual decks skip
+  it. DuelLab keeps a dated history of the list from each import, and a deck can follow the current
+  list or be pinned to an earlier one.
 - **Versions**: duplicate a version to experiment; the original never changes. Unsaved edits
   survive navigation and page reloads.
 - **Roles**: label cards as Starter, Extender, Searcher, Hand trap, Board breaker, Brick or any custom
@@ -83,7 +87,8 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
 
 ## Using DuelLab
 
-1. **My decks → Create deck.** You land in the editor for the deck's first version.
+1. **My decks → Create deck.** You land in the editor for the deck's first version. Decks start in
+   TCG Advanced; change the format on the deck page (Casual, or a pinned list).
 2. **Add cards** from the search panel. Extra Deck monsters go to the Extra Deck automatically.
    Use "→ Side" to move a copy to the Side Deck.
 3. **Assign roles** with "+ Roles" on each card. Custom roles are allowed. The panel on the right
@@ -115,6 +120,7 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
   - [0006 – Versions, snapshots and reproducible runs](docs/adr/0006-versions-snapshots-and-reproducible-runs.md)
   - [0007 – Single-image deployment without accounts](docs/adr/0007-single-image-deployment-without-accounts.md)
   - [0008 – OR conditions, card targets and combo lines](docs/adr/0008-or-conditions-card-targets-and-combo-lines.md)
+  - [0009 – Forbidden & Limited enforcement and history](docs/adr/0009-banlist-enforcement-and-history.md)
 
 ## Credits
 

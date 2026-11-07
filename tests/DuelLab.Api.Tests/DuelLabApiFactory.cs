@@ -16,7 +16,7 @@ namespace DuelLab.Api.Tests;
 /// Set <c>DUELLAB_TEST_POSTGRES</c> to a connection string for a user that may create databases.
 /// The default matches the CI service container and the local setup in the README.
 /// </remarks>
-public sealed class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly string _databaseName = $"duellab_test_{Guid.NewGuid():N}";
     private readonly string _imageCache = Path.Combine(Path.GetTempPath(), $"duellab-images-{Guid.NewGuid():N}");
@@ -28,6 +28,9 @@ public sealed class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLi
     private string ConnectionString =>
         new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = _databaseName }.ConnectionString;
 
+    /// <summary>The card file the File provider reads; subclasses may point it elsewhere.</summary>
+    protected virtual string CardFilePath => FixturePath;
+
     public static string FixturePath =>
         Path.Combine(AppContext.BaseDirectory, "fixtures", "ygoprodeck-cards.json");
 
@@ -36,12 +39,12 @@ public sealed class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLi
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:DuelLab", ConnectionString);
         builder.UseSetting("CardCatalog:Provider", "File");
-        builder.UseSetting("CardCatalog:FilePath", FixturePath);
+        builder.UseSetting("CardCatalog:FilePath", CardFilePath);
         builder.UseSetting("CardCatalog:ImportOnStartup", "false");
         builder.UseSetting("CardCatalog:ImageCachePath", _imageCache);
     }
 
-    public async Task InitializeAsync()
+    public virtual async Task InitializeAsync()
     {
         // Starting the server applies migrations; then import the fixture cards once.
         _ = Server;
@@ -52,6 +55,7 @@ public sealed class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLi
     async Task IAsyncLifetime.DisposeAsync()
     {
         await base.DisposeAsync();
+        await CleanupAsync();
         NpgsqlConnection.ClearAllPools();
         await using var connection = new NpgsqlConnection(AdminConnectionString);
         await connection.OpenAsync();
@@ -62,6 +66,9 @@ public sealed class DuelLabApiFactory : WebApplicationFactory<Program>, IAsyncLi
             Directory.Delete(_imageCache, recursive: true);
         }
     }
+
+    /// <summary>Extra cleanup for subclasses, after the server and database are gone.</summary>
+    protected virtual Task CleanupAsync() => Task.CompletedTask;
 
     /// <summary>Runs code against the database directly (for assertions on stored data).</summary>
     public async Task WithDbAsync(Func<DuelLabDbContext, Task> action)

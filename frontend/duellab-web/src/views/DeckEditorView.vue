@@ -6,6 +6,7 @@ import { DECK_ZONES, type Card, type DeckZone, type ValidationIssue } from '@/ap
 import {
   addCard,
   copiesOf,
+  copyLimit,
   mainCopiesWithRole,
   moveOne,
   removeOne,
@@ -39,6 +40,7 @@ const notes = ref('')
 const newRole = ref<Record<number, string>>({})
 
 const version = computed(() => editor.versions[props.versionId])
+const rules = computed(() => editor.banRules(props.versionId))
 const draft = computed(() => editor.draft(props.versionId))
 const dirty = computed(() => editor.isDirty(props.versionId))
 
@@ -71,7 +73,7 @@ function entriesIn(zone: DeckZone) {
 
 function add(card: Card, zone?: DeckZone): void {
   if (!draft.value) return
-  const problem = addCard(draft.value, card, zone)
+  const problem = addCard(draft.value, card, zone, editor.banRules(props.versionId))
   if (problem) toasts.error(problem)
   editor.touched()
 }
@@ -225,6 +227,16 @@ async function simulate(): Promise<void> {
               {{ version.notes }}
             </p>
           </template>
+          <p class="mt-1 text-xs text-ink-2" data-testid="deck-format">
+            {{ version.format }} ·
+            {{ version.format === 'Casual' ? 'no Forbidden & Limited list' : version.banlistLabel }}
+            ·
+            <RouterLink
+              :to="{ name: 'deck', params: { deckId: version.deckId } }"
+              class="text-accent underline"
+              >change</RouterLink
+            >
+          </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <span v-if="dirty" class="text-sm text-warning" role="status">● Unsaved changes</span>
@@ -256,6 +268,7 @@ async function simulate(): Promise<void> {
             compact
             :page-size="20"
             add-label="Add"
+            :status-of="rules.enforced ? rules.statusOf : () => 'Unlimited'"
             @select="detailCard = $event"
             @add="add($event)"
           />
@@ -298,7 +311,8 @@ async function simulate(): Promise<void> {
                 </button>
                 <div class="min-w-0 flex-1">
                   <p class="flex items-center gap-1.5 truncate text-sm font-medium">
-                    {{ entry.card.name }} <BanBadge :status="entry.card.tcgBanStatus" />
+                    {{ entry.card.name }}
+                    <BanBadge v-if="rules.enforced" :status="rules.statusOf(entry.card)" />
                   </p>
                   <div class="mt-0.5 flex flex-wrap items-center gap-1">
                     <span
@@ -370,7 +384,7 @@ async function simulate(): Promise<void> {
                     type="button"
                     class="btn btn-sm w-7"
                     :aria-label="`Add one ${entry.card.name}`"
-                    :disabled="copiesOf(draft, entry.cardId) >= LIMITS.copies"
+                    :disabled="copiesOf(draft, entry.cardId) >= copyLimit(entry.card, rules)"
                     @click="add(entry.card, zone)"
                   >
                     +
@@ -447,7 +461,8 @@ async function simulate(): Promise<void> {
           <CardDetail :card="detailCard" />
           <div class="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
             <span class="num self-center text-sm text-ink-2"
-              >In this deck: {{ copiesOf(draft, detailCard.id) }} / {{ LIMITS.copies }}</span
+              >In this deck: {{ copiesOf(draft, detailCard.id) }} /
+              {{ copyLimit(detailCard, rules) }}</span
             >
             <button
               v-if="!detailCard.isExtraDeckCard"

@@ -19,7 +19,7 @@ public static class DeckRules
     public const int MaxCopiesPerCard = 3;
 
     /// <summary>The format DuelLab currently supports.</summary>
-    public const string DefaultFormat = "TCG Advanced";
+    public const string DefaultFormat = DeckFormats.TcgAdvanced;
 
     /// <summary>Maximum length of deck, version and custom-role names.</summary>
     public const int MaxNameLength = 100;

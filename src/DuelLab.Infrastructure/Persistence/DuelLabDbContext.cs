@@ -18,6 +18,9 @@ public sealed class DuelLabDbContext(DbContextOptions<DuelLabDbContext> options)
     /// <summary>Deck versions.</summary>
     public DbSet<DeckVersion> DeckVersions => Set<DeckVersion>();
 
+    /// <summary>Forbidden &amp; Limited list snapshots.</summary>
+    public DbSet<Banlist> Banlists => Set<Banlist>();
+
     /// <summary>Stored simulation runs.</summary>
     public DbSet<SimulationRun> SimulationRuns => Set<SimulationRun>();
 

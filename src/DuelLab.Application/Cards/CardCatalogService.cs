@@ -11,6 +11,7 @@ namespace DuelLab.Application.Cards;
 /// </remarks>
 public sealed partial class CardCatalogService(
     CatalogSyncGate syncGate,
+    Banlists.BanlistService banlists,
     ICardRepository cards,
     ICardDataProvider provider,
     ICardImageStore images,
@@ -92,6 +93,7 @@ public sealed partial class CardCatalogService(
             }
 
             LogSyncStarting(logger, provider.Name);
+            var version = await provider.GetDataVersionAsync(cancellationToken);
             var incoming = await provider.FetchAllCardsAsync(cancellationToken);
             var existing = await cards.GetAllByExternalIdAsync(cancellationToken);
 
@@ -112,9 +114,10 @@ public sealed partial class CardCatalogService(
 
             cards.AddRange(added);
             await unitOfWork.SaveChangesAsync(cancellationToken);
-            LogSyncFinished(logger, added.Count, updated);
+            var newList = await banlists.RecordIfChangedAsync(version, cancellationToken);
+            LogSyncFinished(logger, added.Count, updated, newList is not null);
 
-            return new CatalogSyncResultDto(added.Count, updated, existing.Count + added.Count, now);
+            return new CatalogSyncResultDto(added.Count, updated, existing.Count + added.Count, now, newList is not null);
         }
         finally
         {
@@ -125,8 +128,8 @@ public sealed partial class CardCatalogService(
     [LoggerMessage(Level = LogLevel.Information, Message = "Importing cards from {Provider}")]
     private static partial void LogSyncStarting(ILogger logger, string provider);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Card import finished: {Added} added, {Updated} updated")]
-    private static partial void LogSyncFinished(ILogger logger, int added, int updated);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Card import finished: {Added} added, {Updated} updated, new Forbidden & Limited list: {NewList}")]
+    private static partial void LogSyncFinished(ILogger logger, int added, int updated, bool newList);
 }
 
 /// <summary>Ensures only one catalogue import runs at a time within an application instance.</summary>

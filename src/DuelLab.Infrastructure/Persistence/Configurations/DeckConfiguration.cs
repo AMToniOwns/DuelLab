@@ -15,6 +15,7 @@ internal sealed class DeckConfiguration : IEntityTypeConfiguration<Deck>
         builder.Property(d => d.Id).ValueGeneratedNever();
         builder.Property(d => d.Name).HasMaxLength(DeckRules.MaxNameLength).IsRequired();
         builder.Property(d => d.Format).HasMaxLength(50).IsRequired();
+        builder.HasOne<Domain.Cards.Banlist>().WithMany().HasForeignKey(d => d.BanlistId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(d => d.Versions).WithOne().HasForeignKey(v => v.DeckId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(d => d.Versions).UsePropertyAccessMode(PropertyAccessMode.Field);
     }

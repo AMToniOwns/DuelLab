@@ -52,10 +52,13 @@ export interface VersionSummary {
   sideCount: number
 }
 
+export type DeckFormat = 'TCG Advanced' | 'Casual'
+
 export interface DeckSummary {
   id: string
   name: string
-  format: string
+  format: DeckFormat
+  banlistId: string | null
   createdAt: string
   updatedAt: string
   versions: VersionSummary[]
@@ -100,6 +103,9 @@ export interface VersionDetail {
   id: string
   deckId: string
   deckName: string
+  format: DeckFormat
+  banlistId: string | null
+  banlistLabel: string
   versionName: string
   notes: string | null
   parentVersionId: string | null
@@ -202,6 +208,25 @@ export interface DeckSnapshot {
   versionId: string
   versionName: string
   mainDeck: SnapshotCard[]
+  format?: DeckFormat | null
+  banlist?: string | null
+}
+
+export interface BanlistSummary {
+  id: string
+  label: string
+  firstSeenAt: string
+  providerVersion: string | null
+  providerUpdatedAt: string | null
+  forbidden: number
+  limited: number
+  semiLimited: number
+  isCurrent: boolean
+}
+
+export interface Banlist {
+  summary: BanlistSummary
+  entries: { cardId: number; name: string; status: BanStatus }[]
 }
 
 export interface SimulationRun {

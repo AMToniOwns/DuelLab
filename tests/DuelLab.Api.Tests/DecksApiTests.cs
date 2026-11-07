@@ -74,7 +74,7 @@ public sealed class DecksApiTests(DuelLabApiFactory factory) : ApiTestBase(facto
             new UpdateCardsRequest([.. entries, new(link.Id, DeckZone.Main, 1), new(called.Id, DeckZone.Side, 1)]));
 
         Assert.Contains(updated.Validation.Issues, i => i.Code == "deck.extra_card_in_main" && i.Severity == ValidationSeverity.Error);
-        Assert.Contains(updated.Validation.Issues, i => i.Code == "deck.banlist" && i.Severity == ValidationSeverity.Warning);
+        Assert.Contains(updated.Validation.Issues, i => i.Code == "deck.banlist" && i.Severity == ValidationSeverity.Error);
     }
 
     [Fact]

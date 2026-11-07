@@ -1,4 +1,4 @@
-import type { Card, ComboPiece, DeckZone, VersionDetail } from '@/api/types'
+import type { BanStatus, Card, ComboPiece, DeckZone, VersionDetail } from '@/api/types'
 
 /**
  * The client-side working copy of a deck version. The editor changes the draft freely; nothing
@@ -76,8 +76,55 @@ export function defaultZone(card: Card): DeckZone {
   return card.isExtraDeckCard ? 'Extra' : 'Main'
 }
 
+/**
+ * The Forbidden & Limited list that applies to a deck: off (Casual), or a status per card with a
+ * label naming the list.
+ */
+export interface BanRules {
+  enforced: boolean
+  statusOf: (card: Card) => BanStatus
+  label: string
+}
+
+/** No list (Casual): only the 3-copy rule applies. */
+export const NO_BAN_RULES: BanRules = {
+  enforced: false,
+  statusOf: () => 'Unlimited',
+  label: 'no list',
+}
+
+const BAN_LIMIT: Record<BanStatus, number> = {
+  Unlimited: 3,
+  SemiLimited: 2,
+  Limited: 1,
+  Forbidden: 0,
+}
+const BAN_NAME: Record<BanStatus, string> = {
+  Unlimited: 'Unlimited',
+  SemiLimited: 'Semi-Limited',
+  Limited: 'Limited',
+  Forbidden: 'Forbidden',
+}
+
+/** The most copies a card may have under the rules. */
+export function copyLimit(card: Card, rules: BanRules = NO_BAN_RULES): number {
+  return rules.enforced ? Math.min(LIMITS.copies, BAN_LIMIT[rules.statusOf(card)]) : LIMITS.copies
+}
+
 /** Why a card cannot be added to a zone, or null if it can. */
-export function cannotAdd(draft: DeckDraft, card: Card, zone: DeckZone): string | null {
+export function cannotAdd(
+  draft: DeckDraft,
+  card: Card,
+  zone: DeckZone,
+  rules: BanRules = NO_BAN_RULES,
+): string | null {
+  const limit = copyLimit(card, rules)
+  if (limit < LIMITS.copies && copiesOf(draft, card.id) >= limit) {
+    const status = BAN_NAME[rules.statusOf(card)]
+    return limit === 0
+      ? `${card.name} is Forbidden (${rules.label}). Switch the deck to Casual to use it anyway.`
+      : `${card.name} is ${status} (${rules.label}): at most ${limit} ${limit === 1 ? 'copy' : 'copies'}.`
+  }
   if (copiesOf(draft, card.id) >= LIMITS.copies)
     return `You already have ${LIMITS.copies} copies of ${card.name}.`
   if (zoneCount(draft, zone) >= zoneMax(zone))
@@ -92,8 +139,9 @@ export function addCard(
   draft: DeckDraft,
   card: Card,
   zone: DeckZone = defaultZone(card),
+  rules: BanRules = NO_BAN_RULES,
 ): string | null {
-  const problem = cannotAdd(draft, card, zone)
+  const problem = cannotAdd(draft, card, zone, rules)
   if (problem) return problem
 
   draft.cards[card.id] = card

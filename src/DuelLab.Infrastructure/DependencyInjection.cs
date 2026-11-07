@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IDeckRepository, DeckRepository>();
         services.AddScoped<ICardRepository, CardRepository>();
         services.AddScoped<ISimulationRunRepository, SimulationRunRepository>();
+        services.AddScoped<IBanlistRepository, BanlistRepository>();
 
         services.Configure<CardCatalogOptions>(configuration.GetSection(CardCatalogOptions.SectionName));
         var catalog = configuration.GetSection(CardCatalogOptions.SectionName).Get<CardCatalogOptions>() ?? new CardCatalogOptions();

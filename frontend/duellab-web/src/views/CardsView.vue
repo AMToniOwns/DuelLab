@@ -31,7 +31,7 @@ function add(card: Card): void {
     toasts.error('Choose a deck version to add cards to.')
     return
   }
-  const problem = addCard(draft, card, defaultZone(card))
+  const problem = addCard(draft, card, defaultZone(card), editor.banRules(target.value!))
   editor.touched()
   if (problem) toasts.error(problem)
   else toasts.success(`Added ${card.name}. Review and save it in the deck editor.`)

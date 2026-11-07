@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddSingleton<HandSimulator>();
         services.AddSingleton<SimulationEngine>();
         services.AddSingleton<CatalogSyncGate>();
+        services.AddScoped<Banlists.BanlistService>();
         services.AddScoped<CardCatalogService>();
         services.AddScoped<DeckService>();
         services.AddScoped<SimulationService>();

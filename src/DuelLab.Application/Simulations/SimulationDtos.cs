@@ -45,8 +45,15 @@ public sealed record RequirementDto(
     IReadOnlyList<string>? Roles = null,
     IReadOnlyList<int>? CardIds = null);
 
-/// <summary>The Main Deck as it was when a run happened.</summary>
-public sealed record DeckSnapshot(Guid DeckId, string DeckName, Guid VersionId, string VersionName, IReadOnlyList<SnapshotCard> MainDeck);
+/// <summary>The Main Deck as it was when a run happened, and the format and list it was checked against.</summary>
+public sealed record DeckSnapshot(
+    Guid DeckId,
+    string DeckName,
+    Guid VersionId,
+    string VersionName,
+    IReadOnlyList<SnapshotCard> MainDeck,
+    string? Format = null,
+    string? Banlist = null);
 
 /// <summary>One card of a <see cref="DeckSnapshot"/>.</summary>
 public sealed record SnapshotCard(int CardId, string Name, int Quantity, IReadOnlyList<string> Roles);

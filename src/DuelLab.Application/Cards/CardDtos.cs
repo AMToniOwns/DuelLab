@@ -52,4 +52,4 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page,
 public sealed record CatalogStatusDto(int CardCount, DateTimeOffset? LastSyncedAt, string Provider);
 
 /// <summary>The outcome of an import from the provider.</summary>
-public sealed record CatalogSyncResultDto(int Added, int Updated, int Total, DateTimeOffset SyncedAt);
+public sealed record CatalogSyncResultDto(int Added, int Updated, int Total, DateTimeOffset SyncedAt, bool BanlistChanged);

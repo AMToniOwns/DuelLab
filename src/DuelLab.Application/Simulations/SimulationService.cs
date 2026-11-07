@@ -82,7 +82,7 @@ public sealed class SimulationService(
         try
         {
             var (deck, version) = await deckService.LoadVersionAsync(run.DeckVersionId, cancellationToken);
-            changed = Hash(await CreateSnapshotAsync(deck, version, cancellationToken)) != run.DeckSnapshotHash;
+            changed = Hash(await CreateSnapshotAsync(deck, version, cancellationToken, requireValid: false)) != run.DeckSnapshotHash;
         }
         catch (NotFoundException)
         {
@@ -348,10 +348,14 @@ public sealed class SimulationService(
             : Scenario.AllOf(s.Name, (s.Requirements ?? []).Select(ToRequirement).ToList(), s.RequireDistinctCards);
     }
 
-    private async Task<DeckSnapshot> CreateSnapshotAsync(Deck deck, DeckVersion version, CancellationToken cancellationToken)
+    /// <summary>
+    /// Snapshots a version's Main Deck. With <paramref name="requireValid"/> (when about to simulate),
+    /// an invalid deck is refused; without it (when only checking for changes), any deck is accepted.
+    /// </summary>
+    private async Task<DeckSnapshot> CreateSnapshotAsync(Deck deck, DeckVersion version, CancellationToken cancellationToken, bool requireValid = true)
     {
-        var (validation, used) = await deckService.ValidateAsync(version, cancellationToken);
-        if (!validation.IsValid)
+        var (validation, used, rules) = await deckService.ValidateAsync(deck, version, cancellationToken);
+        if (requireValid && !validation.IsValid)
         {
             var errors = validation.Issues.Where(i => i.Severity == ValidationSeverity.Error).Select(i => i.Message);
             throw new RequestValidationException("simulation.invalid_deck", "Fix the deck before simulating: " + string.Join(" ", errors));
@@ -362,12 +366,12 @@ public sealed class SimulationService(
             .OrderBy(c => c.CardId)
             .Select(c => new SnapshotCard(
                 c.CardId,
-                used[c.CardId].Name,
+                used.TryGetValue(c.CardId, out var card) ? card.Name : $"Card {c.CardId}",
                 c.Quantity,
                 version.RolesOf(c.CardId).Select(r => r.Key).Order(StringComparer.Ordinal).ToList()))
             .ToList();
 
-        return new DeckSnapshot(deck.Id, deck.Name, version.Id, version.VersionName, main);
+        return new DeckSnapshot(deck.Id, deck.Name, version.Id, version.VersionName, main, deck.Format, rules.Label);
     }
 
     /// <summary>A hash of what affects results: the Main Deck's cards, quantities and roles.</summary>

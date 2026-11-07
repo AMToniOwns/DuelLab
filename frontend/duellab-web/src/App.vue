@@ -13,6 +13,7 @@ const links = [
   { to: '/cards', label: 'Card database' },
   { to: '/simulate', label: 'Simulator' },
   { to: '/compare', label: 'Compare' },
+  { to: '/banlist', label: 'Banlist' },
 ]
 
 function isActive(to: string, exact = false): boolean {

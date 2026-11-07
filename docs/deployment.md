@@ -55,7 +55,10 @@ Card data and images can always be re-imported, so they do not need backing up.
 ## Updating card data
 
 `POST /api/cards/sync` refreshes the catalogue (allowed once an hour). Cards are never deleted, so
-existing decks keep working.
+existing decks keep working. If the TCG Forbidden & Limited list changed, the import stores a new
+dated snapshot; decks that follow the current list are checked against it from then on, so a deck
+that was legal can become invalid until it is fixed or switched to Casual (or pinned to the older
+list).
 
 ## Performance
 

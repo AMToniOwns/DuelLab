@@ -22,6 +22,53 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DuelLab.Domain.Cards.Banlist", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ProviderUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProviderVersion")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FirstSeenAt");
+
+                    b.ToTable("banlists", (string)null);
+                });
+
+            modelBuilder.Entity("DuelLab.Domain.Cards.BanlistEntry", b =>
+                {
+                    b.Property<Guid>("BanlistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CardId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("BanlistId", "CardId");
+
+                    b.HasIndex("CardId");
+
+                    b.ToTable("banlist_entries", (string)null);
+                });
+
             modelBuilder.Entity("DuelLab.Domain.Cards.Card", b =>
                 {
                     b.Property<int>("Id")
@@ -110,6 +157,9 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("BanlistId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -127,6 +177,8 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BanlistId");
 
                     b.ToTable("decks", (string)null);
                 });
@@ -295,6 +347,29 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                     b.ToTable("simulation_runs", (string)null);
                 });
 
+            modelBuilder.Entity("DuelLab.Domain.Cards.BanlistEntry", b =>
+                {
+                    b.HasOne("DuelLab.Domain.Cards.Banlist", null)
+                        .WithMany("Entries")
+                        .HasForeignKey("BanlistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DuelLab.Domain.Cards.Card", null)
+                        .WithMany()
+                        .HasForeignKey("CardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DuelLab.Domain.Decks.Deck", b =>
+                {
+                    b.HasOne("DuelLab.Domain.Cards.Banlist", null)
+                        .WithMany()
+                        .HasForeignKey("BanlistId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("DuelLab.Domain.Decks.DeckVersion", b =>
                 {
                     b.HasOne("DuelLab.Domain.Decks.Deck", null)
@@ -355,6 +430,11 @@ namespace DuelLab.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DeckVersionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("DuelLab.Domain.Cards.Banlist", b =>
+                {
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("DuelLab.Domain.Decks.Deck", b =>

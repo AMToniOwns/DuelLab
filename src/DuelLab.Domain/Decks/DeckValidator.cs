@@ -24,15 +24,37 @@ public sealed record DeckValidationResult(IReadOnlyList<DeckValidationIssue> Iss
 
 /// <summary>
 /// Checks a deck version against the deck-construction rules that need card data: zone sizes,
-/// Extra Deck placement and (as warnings) the provider's Forbidden &amp; Limited snapshot.
+/// Extra Deck placement and, for TCG Advanced, the Forbidden &amp; Limited list.
 /// </summary>
 public static class DeckValidator
 {
-    /// <summary>Validates <paramref name="version"/>. <paramref name="cards"/> must contain every card it uses.</summary>
+    /// <summary>
+    /// Validates <paramref name="version"/> under the current list as recorded on each card.
+    /// <paramref name="cards"/> must contain every card it uses.
+    /// </summary>
     public static DeckValidationResult Validate(DeckVersion version, IReadOnlyDictionary<int, Card> cards)
+    {
+        ArgumentNullException.ThrowIfNull(cards);
+        return Validate(version, cards, CurrentListOnCards(cards));
+    }
+
+    /// <summary>The current list as recorded on the cards themselves (their last-synced status).</summary>
+    public static BanlistRules CurrentListOnCards(IReadOnlyDictionary<int, Card> cards)
+    {
+        ArgumentNullException.ThrowIfNull(cards);
+        var synced = cards.Values.Select(c => c.LastSyncedAt).DefaultIfEmpty().Max();
+        return new BanlistRules(
+            true,
+            id => cards.TryGetValue(id, out var card) ? card.TcgBanStatus : BanStatus.Unlimited,
+            synced == default ? "current TCG list" : $"current TCG list, synced {synced:yyyy-MM-dd}");
+    }
+
+    /// <summary>Validates <paramref name="version"/> under the given Forbidden &amp; Limited rules.</summary>
+    public static DeckValidationResult Validate(DeckVersion version, IReadOnlyDictionary<int, Card> cards, BanlistRules banlist)
     {
         ArgumentNullException.ThrowIfNull(version);
         ArgumentNullException.ThrowIfNull(cards);
+        ArgumentNullException.ThrowIfNull(banlist);
 
         var issues = new List<DeckValidationIssue>();
 
@@ -71,24 +93,26 @@ public static class DeckValidator
             }
         }
 
-        foreach (var group in version.Cards.GroupBy(c => c.CardId))
+        if (banlist.Enforced)
         {
-            if (!cards.TryGetValue(group.Key, out var card) || card.TcgBanStatus == BanStatus.Unlimited)
+            foreach (var group in version.Cards.GroupBy(c => c.CardId))
             {
-                continue;
-            }
+                var status = banlist.StatusOf(group.Key);
+                var copies = group.Sum(c => c.Quantity);
+                var allowed = status.MaxCopies();
+                if (copies <= allowed)
+                {
+                    continue;
+                }
 
-            var copies = group.Sum(c => c.Quantity);
-            var allowed = card.TcgBanStatus.MaxCopies();
-            if (copies > allowed)
-            {
+                var name = cards.TryGetValue(group.Key, out var card) ? card.Name : $"Card {group.Key}";
                 issues.Add(new(
-                    ValidationSeverity.Warning,
+                    ValidationSeverity.Error,
                     "deck.banlist",
-                    $"{card.Name} is {Describe(card.TcgBanStatus)} in the TCG according to the card data synced " +
-                    $"on {card.LastSyncedAt:yyyy-MM-dd} (allows {allowed}); this deck has {copies}. " +
-                    "Check the current official list before a tournament.",
-                    card.Id));
+                    status == BanStatus.Forbidden
+                        ? $"{name} is Forbidden ({banlist.Label}); remove all {copies} {(copies == 1 ? "copy" : "copies")}, or switch the deck to Casual."
+                        : $"{name} is {Describe(status)} ({banlist.Label}): at most {allowed} {(allowed == 1 ? "copy" : "copies")} across Main, Extra and Side Deck; this deck has {copies}.",
+                    group.Key));
             }
         }
 

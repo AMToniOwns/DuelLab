@@ -78,17 +78,56 @@ public sealed class DeckValidatorTests
     }
 
     [Fact]
-    public void ExceedingBanlistSnapshot_IsOnlyAWarning()
+    public void ExceedingTheCurrentList_IsAnErrorInTcgAdvanced()
     {
         var (version, cards) = FortyCardDeck();
         cards[1] = TestData.Card(1, "Limited card", ban: BanStatus.Limited); // the deck has 3
 
         var result = DeckValidator.Validate(version, cards);
 
-        Assert.True(result.IsValid);
+        Assert.False(result.IsValid);
         var issue = Assert.Single(result.Issues);
-        Assert.Equal(ValidationSeverity.Warning, issue.Severity);
+        Assert.Equal(ValidationSeverity.Error, issue.Severity);
         Assert.Equal("deck.banlist", issue.Code);
+        Assert.Contains("at most 1 copy", issue.Message, StringComparison.Ordinal);
+        Assert.Contains("current TCG list, synced 2026-11-07", issue.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(BanStatus.SemiLimited, 2, true)]
+    [InlineData(BanStatus.SemiLimited, 3, false)]
+    [InlineData(BanStatus.Limited, 1, true)]
+    [InlineData(BanStatus.Forbidden, 1, false)]
+    public void ListLimits_CountCopiesAcrossAllZones(BanStatus status, int copies, bool valid)
+    {
+        var (version, cards) = FortyCardDeck();
+        cards[99] = TestData.Card(99, "Listed", ban: status);
+        version.ReplaceCards([.. version.Cards.Select(c => new DeckCardEntry(c.CardId, c.Zone, c.Quantity)), new(99, DeckZone.Side, copies)], Now);
+
+        Assert.Equal(valid, DeckValidator.Validate(version, cards).IsValid);
+    }
+
+    [Fact]
+    public void Casual_IgnoresTheList()
+    {
+        var (version, cards) = FortyCardDeck();
+        cards[1] = TestData.Card(1, "Forbidden card", ban: BanStatus.Forbidden);
+
+        Assert.True(DeckValidator.Validate(version, cards, BanlistRules.None).IsValid);
+    }
+
+    [Fact]
+    public void PinnedList_IsUsedInsteadOfTheCardsCurrentStatus()
+    {
+        var (version, cards) = FortyCardDeck();
+        cards[1] = TestData.Card(1, "Now forbidden", ban: BanStatus.Forbidden);
+        var oldList = Banlist.Create([(2, BanStatus.Limited)], Now.AddMonths(-6));
+        var rules = new BanlistRules(true, oldList.StatusOf, oldList.Label);
+
+        var issue = Assert.Single(DeckValidator.Validate(version, cards, rules).Issues);
+
+        Assert.Equal(2, issue.CardId); // card 1 was fine on the old list; card 2 was Limited
+        Assert.Contains("TCG list first seen 2026-05-07", issue.Message, StringComparison.Ordinal);
     }
 
     [Fact]

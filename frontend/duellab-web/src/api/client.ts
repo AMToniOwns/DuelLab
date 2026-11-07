@@ -1,9 +1,12 @@
 import type {
+  Banlist,
+  BanlistSummary,
   Card,
   CardKind,
   ComboPiece,
   CatalogStatus,
   Comparison,
+  DeckFormat,
   DeckSummary,
   DeckZone,
   PagedResult,
@@ -77,7 +80,10 @@ export const api = {
     },
     get: (id: number) => get<Card>(`/api/cards/${id}`),
     status: () => get<CatalogStatus>('/api/cards/status'),
-    sync: () => post<{ added: number; updated: number; total: number }>('/api/cards/sync'),
+    sync: () =>
+      post<{ added: number; updated: number; total: number; banlistChanged: boolean }>(
+        '/api/cards/sync',
+      ),
   },
   decks: {
     list: () => get<DeckSummary[]>('/api/decks'),
@@ -85,6 +91,8 @@ export const api = {
     create: (name: string) => post<DeckSummary>('/api/decks', { name }),
     rename: (id: string, name: string) => put<DeckSummary>(`/api/decks/${id}`, { name }),
     remove: (id: string) => del(`/api/decks/${id}`),
+    setFormat: (id: string, format: DeckFormat, banlistId: string | null) =>
+      put<DeckSummary>(`/api/decks/${id}/format`, { format, banlistId }),
     createVersion: (deckId: string, versionName: string, sourceVersionId?: string | null) =>
       post<VersionDetail>(`/api/decks/${deckId}/versions`, {
         versionName,
@@ -114,6 +122,11 @@ export const api = {
         candidateVersionId,
         configuration,
       }),
+  },
+  banlists: {
+    list: () => get<BanlistSummary[]>('/api/banlists'),
+    current: () => get<Banlist>('/api/banlists/current'),
+    get: (id: string) => get<Banlist>(`/api/banlists/${id}`),
   },
   simulations: {
     recent: (take = 10) => get<SimulationRunSummary[]>(`/api/simulations?take=${take}`),

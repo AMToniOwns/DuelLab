@@ -6,7 +6,12 @@ using DuelLab.Domain.Decks;
 namespace DuelLab.Application.Decks;
 
 /// <summary>Use cases for decks and deck versions.</summary>
-public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IUnitOfWork unitOfWork, TimeProvider time)
+public sealed class DeckService(
+    IDeckRepository decks,
+    ICardRepository cards,
+    Banlists.BanlistService banlists,
+    IUnitOfWork unitOfWork,
+    TimeProvider time)
 {
     /// <summary>All decks, most recently updated first.</summary>
     public async Task<IReadOnlyList<DeckSummaryDto>> ListAsync(CancellationToken cancellationToken) =>
@@ -19,7 +24,13 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
     /// <summary>Creates a deck with an empty first version.</summary>
     public async Task<DeckSummaryDto> CreateAsync(CreateDeckRequest request, CancellationToken cancellationToken)
     {
-        var deck = Deck.Create(request.Name, time.GetUtcNow());
+        var now = time.GetUtcNow();
+        var deck = Deck.Create(request.Name, now);
+        if (request.Format is not null)
+        {
+            deck.SetFormat(request.Format, null, now);
+        }
+
         decks.Add(deck);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ToSummary(deck);
@@ -30,6 +41,21 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
     {
         var deck = await LoadDeckAsync(deckId, cancellationToken);
         deck.Rename(request.Name, time.GetUtcNow());
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return ToSummary(deck);
+    }
+
+    /// <summary>Changes a deck's format, optionally pinning TCG Advanced to a Forbidden &amp; Limited list.</summary>
+    public async Task<DeckSummaryDto> UpdateFormatAsync(Guid deckId, UpdateFormatRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var deck = await LoadDeckAsync(deckId, cancellationToken);
+        if (request.BanlistId is { } id)
+        {
+            await banlists.EnsureExistsAsync(id, cancellationToken);
+        }
+
+        deck.SetFormat(request.Format, request.BanlistId, time.GetUtcNow());
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return ToSummary(deck);
     }
@@ -142,11 +168,15 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
         return (deck, deck.Versions.Single(v => v.Id == versionId));
     }
 
-    /// <summary>Validates a version against the catalogue.</summary>
-    internal async Task<(DeckValidationResult Result, Dictionary<int, Card> Cards)> ValidateAsync(DeckVersion version, CancellationToken cancellationToken)
+    /// <summary>Validates a version against the catalogue and the deck's Forbidden &amp; Limited rules.</summary>
+    internal async Task<(DeckValidationResult Result, Dictionary<int, Card> Cards, BanlistRules Rules)> ValidateAsync(
+        Deck deck,
+        DeckVersion version,
+        CancellationToken cancellationToken)
     {
         var used = await cards.GetByIdsAsync(version.Cards.Select(c => c.CardId).Distinct(), cancellationToken);
-        return (DeckValidator.Validate(version, used), used);
+        var (rules, _) = await banlists.RulesForAsync(deck, used, cancellationToken);
+        return (DeckValidator.Validate(version, used, rules), used, rules);
     }
 
     private async Task<Deck> LoadDeckAsync(Guid deckId, CancellationToken cancellationToken) =>
@@ -154,7 +184,7 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
 
     private async Task<VersionDetailDto> ToDetailAsync(Deck deck, DeckVersion version, CancellationToken cancellationToken)
     {
-        var (validation, used) = await ValidateAsync(version, cancellationToken);
+        var (validation, used, rules) = await ValidateAsync(deck, version, cancellationToken);
         var entries = version.Cards
             .Where(c => used.ContainsKey(c.CardId))
             .OrderBy(c => c.Zone)
@@ -171,6 +201,9 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
             version.Id,
             deck.Id,
             deck.Name,
+            deck.Format,
+            deck.BanlistId,
+            rules.Label,
             version.VersionName,
             version.Notes,
             version.ParentVersionId,
@@ -196,6 +229,7 @@ public sealed class DeckService(IDeckRepository decks, ICardRepository cards, IU
         deck.Id,
         deck.Name,
         deck.Format,
+        deck.BanlistId,
         deck.CreatedAt,
         deck.UpdatedAt,
         deck.Versions

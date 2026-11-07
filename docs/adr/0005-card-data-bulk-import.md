@@ -1,6 +1,6 @@
 # ADR 0005 – Card data: bulk import from YGOPRODeck
 
-- **Status:** Accepted
+- **Status:** Accepted; the banlist handling below is superseded by [ADR 0009](0009-banlist-enforcement-and-history.md)
 - **Date:** 2026-11-07
 
 ## Context

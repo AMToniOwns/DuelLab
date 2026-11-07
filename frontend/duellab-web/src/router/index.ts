@@ -45,6 +45,12 @@ const router = createRouter({
       meta: { title: 'Simulation results' },
     },
     {
+      path: '/banlist',
+      name: 'banlist',
+      component: () => import('@/views/BanlistView.vue'),
+      meta: { title: 'Forbidden & Limited list' },
+    },
+    {
       path: '/compare',
       name: 'compare',
       component: () => import('@/views/CompareView.vue'),

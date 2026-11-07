@@ -29,6 +29,11 @@ public sealed class DecksController(DeckService decks) : ControllerBase
     public Task<DeckSummaryDto> Rename(Guid id, RenameDeckRequest request, CancellationToken cancellationToken) =>
         decks.RenameAsync(id, request, cancellationToken);
 
+    /// <summary>Sets the format: TCG Advanced (optionally pinned to a list snapshot) or Casual.</summary>
+    [HttpPut("{id:guid}/format")]
+    public Task<DeckSummaryDto> UpdateFormat(Guid id, UpdateFormatRequest request, CancellationToken cancellationToken) =>
+        decks.UpdateFormatAsync(id, request, cancellationToken);
+
     /// <summary>Deletes a deck, its versions and their simulation history.</summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)

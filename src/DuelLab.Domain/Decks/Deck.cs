@@ -22,8 +22,14 @@ public sealed class Deck
     /// <summary>The deck name.</summary>
     public string Name { get; private set; }
 
-    /// <summary>The play format. Only "TCG Advanced" is supported for now.</summary>
+    /// <summary>The play format: <see cref="DeckFormats.TcgAdvanced"/> or <see cref="DeckFormats.Casual"/>.</summary>
     public string Format { get; private set; }
+
+    /// <summary>
+    /// For TCG Advanced: the Forbidden &amp; Limited list snapshot the deck is pinned to, or null to follow
+    /// the current list.
+    /// </summary>
+    public Guid? BanlistId { get; private set; }
 
     /// <summary>When the deck was created.</summary>
     public DateTimeOffset CreatedAt { get; private set; }
@@ -52,6 +58,24 @@ public sealed class Deck
     public void Rename(string name, DateTimeOffset now)
     {
         Name = ValidateName(name, "deck.name");
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Sets the format. <paramref name="banlistId"/> pins a TCG Advanced deck to a list snapshot (null
+    /// follows the current list); it is not allowed for Casual.
+    /// </summary>
+    public void SetFormat(string format, Guid? banlistId, DateTimeOffset now)
+    {
+        var normalized = DeckFormats.Normalize(format)
+            ?? throw new DomainException("deck.unknown_format", $"Unknown format '{format}'. Use one of: {string.Join(", ", DeckFormats.All)}.");
+        if (banlistId is not null && normalized != DeckFormats.TcgAdvanced)
+        {
+            throw new DomainException("deck.banlist_needs_tcg", "Only TCG Advanced decks can be pinned to a Forbidden & Limited list.");
+        }
+
+        Format = normalized;
+        BanlistId = banlistId;
         Touch(now);
     }
 
