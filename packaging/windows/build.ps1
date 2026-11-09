@@ -27,7 +27,7 @@ if ($LASTEXITCODE) { throw 'dotnet publish failed' }
 Rename-Item (Join-Path $app 'DuelLab.Api.exe') 'DuelLab.exe'
 Remove-Item (Join-Path $app 'appsettings.Development.json') -ErrorAction SilentlyContinue
 Copy-Item -Recurse "$root\frontend\duellab-web\dist" (Join-Path $app 'wwwroot')
-Copy-Item "$PSScriptRoot\appsettings.Desktop.json", "$PSScriptRoot\README.txt" $app
+Copy-Item "$root\packaging\desktop\appsettings.Desktop.json", "$PSScriptRoot\README.txt" $app
 
 Compress-Archive -Path $app -DestinationPath (Join-Path $out 'DuelLab-windows.zip')
 Write-Host "Done: $out\DuelLab-windows.zip"

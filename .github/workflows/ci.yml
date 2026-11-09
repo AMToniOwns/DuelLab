@@ -174,8 +174,6 @@ jobs:
     name: Windows app (build, smoke test, package)
     runs-on: windows-latest
     needs: [backend, frontend]
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -240,9 +238,110 @@ jobs:
         with:
           name: DuelLab-windows
           path: dist/DuelLab-windows.zip
-      - name: Publish a release for version tags
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
+
+  macos-app:
+    name: macOS app (${{ matrix.arch }})
+    # macos-latest is Apple Silicon; the Intel build is tested on it under Rosetta 2.
+    runs-on: macos-latest
+    needs: [backend, frontend]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/duellab-web/package-lock.json
+      - name: Install Rosetta 2 (Intel build)
+        if: matrix.arch == 'x64'
+        run: softwareupdate --install-rosetta --agree-to-license
+      - name: Build DuelLab and the zip
+        run: bash packaging/macos/build.sh ${{ matrix.arch }} dist
+      - name: Smoke-test DuelLab on macOS
+        run: |
+          set -euo pipefail
+          export DUELLAB_DATA_DIR="$RUNNER_TEMP/duellab-data"
+          export CardCatalog__Provider=File
+          export CardCatalog__FilePath="$PWD/tests/fixtures/ygoprodeck-cards.json"
+          # Test the zip users download, not the build folder.
+          mkdir -p "$RUNNER_TEMP/unzipped" && ditto -x -k dist/DuelLab-macos-${{ matrix.arch }}.zip "$RUNNER_TEMP/unzipped"
+          exe="$RUNNER_TEMP/unzipped/DuelLab/DuelLab"
+          file "$exe"
+          codesign --verify --verbose "$exe"
+          "$exe" --no-browser > "$RUNNER_TEMP/duellab.out" 2>&1 &
+          app=$!
+          base=http://127.0.0.1:5180
+          ok=
+          for i in $(seq 60); do
+            if [ "$(curl -fs $base/health | jq -r .app 2>/dev/null)" = DuelLab ]; then ok=1; break; fi
+            sleep 1
+          done
+          [ -n "$ok" ] || { cat "$RUNNER_TEMP/duellab.out"; echo "DuelLab did not start"; exit 1; }
+
+          for i in $(seq 30); do
+            [ "$(curl -fs $base/api/cards/status | jq .cardCount)" != 0 ] && break
+            sleep 1
+          done
+          curl -fs $base/decks | grep -q '<div id="app">' || { echo "web app not served"; exit 1; }
+          [ -f "$DUELLAB_DATA_DIR/duellab.db" ] || { echo "database not created in the data folder"; exit 1; }
+
+          # Import a .ydk (alternate-art Ash Blossom x3 + 37 other copies), then simulate.
+          codes=()
+          for name in 'Effect Veiler' 'Infinite Impermanence' 'Dark Magician' 'Raigeki' 'Polymerization' 'Mirror Force' \
+                      'Mystical Space Typhoon' 'Blue-Eyes White Dragon' 'Dark Magician Girl' 'Elemental HERO Neos' \
+                      'Nibiru, the Primal Being' 'Black Luster Soldier - Envoy of the Beginning' 'Swords of Revealing Light'; do
+            id=$(curl -fsG $base/api/cards --data-urlencode "search=$name" | jq -r --arg n "$name" '.items[] | select(.name == $n) | .externalId')
+            [ -n "$id" ] || { echo "card not found: $name"; exit 1; }
+            codes+=("$id" "$id" "$id")
+          done
+          ydk=$(printf '#main\n14558128\n14558128\n14558128\n'; printf '%s\n' "${codes[@]:0:37}")
+          import=$(jq -n --arg c "$ydk" '{name: "Smoke test", content: $c, format: "Casual"}' \
+            | curl -fs $base/api/decks/import -H 'Content-Type: application/json' -d @-)
+          [ "$(echo "$import" | jq '.report.imported.main')" = 40 ] && [ "$(echo "$import" | jq '.report.alternateArtworks')" = 3 ] \
+            || { echo "unexpected import: $(echo "$import" | jq .report)"; exit 1; }
+          version=$(echo "$import" | jq -r .version.id)
+          ash=$(echo "$import" | jq '.version.cards[] | select(.card.name == "Ash Blossom & Joyous Spring") | .card.id')
+          jq -n --argjson a "$ash" '{cards: [{cardId: $a, roles: ["Starter"]}]}' \
+            | curl -fs -X PUT $base/api/versions/$version/roles -H 'Content-Type: application/json' -d @- > /dev/null
+          starter=$(curl -fs $base/api/versions/$version/simulate -H 'Content-Type: application/json' \
+            -d '{"sampleCount": 10000, "seed": 1, "includeComboLines": false}' | jq '.result.scenarios[] | select(.name == "Starter") | .exact')
+          echo "Exact P(starter) = $starter"
+          # 3 starters in 40 cards: 1 - C(37,5)/C(40,5) = 0.3375506...
+          awk -v s="$starter" 'BEGIN { d = s - 0.3375506; exit !(d < 0.000001 && d > -0.000001) }' || { echo "unexpected exact value"; exit 1; }
+
+          # A second launch finds the running copy and exits.
+          "$exe" --no-browser
+          kill $app
+          ls -la "$RUNNER_TEMP/unzipped/DuelLab"
+          du -h dist/DuelLab-macos-${{ matrix.arch }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DuelLab-macos-${{ matrix.arch }}
+          path: dist/DuelLab-macos-${{ matrix.arch }}.zip
+
+  release:
+    name: GitHub Release (version tags)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [windows-app, macos-app]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create $env:GITHUB_REF_NAME dist/DuelLab-windows.zip --title "DuelLab $env:GITHUB_REF_NAME" --notes "Unzip, then double-click DuelLab.exe. See README.txt inside the zip."
+        run: |
+          ls -la dist
+          gh release create "$GITHUB_REF_NAME" dist/DuelLab-windows.zip dist/DuelLab-macos-arm64.zip dist/DuelLab-macos-x64.zip \
+            --repo "$GITHUB_REPOSITORY" --title "DuelLab $GITHUB_REF_NAME" \
+            --notes "Windows: DuelLab-windows.zip, unzip and double-click DuelLab.exe. Mac: DuelLab-macos-arm64.zip for Apple Silicon (M1 and later), DuelLab-macos-x64.zip for Intel Macs; unzip and double-click DuelLab. See README.txt inside each zip."

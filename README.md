@@ -39,15 +39,24 @@ to locals.
 DuelLab measures how often a hand contains the cards *you* labelled. It does not decide whether a
 hand can complete a combo. See [statistical assumptions and limitations](docs/statistics.md).
 
-## Windows app (for you and friends)
+## Desktop app for Windows and Mac (for you and friends)
 
-Download `DuelLab-windows.zip` from the latest successful
-[CI run](https://github.com/AMToniOwns/DuelLab/actions/workflows/ci.yml) (artifact "DuelLab-windows")
-or from a [release](https://github.com/AMToniOwns/DuelLab/releases), unzip it, and double-click
-`DuelLab.exe`. Nothing else to install: no Docker, .NET or database server. It opens in your browser at
-http://127.0.0.1:5180, is reachable only from your own PC, and keeps your decks in
-`%LOCALAPPDATA%\DuelLab`. See `README.txt` in the zip for updates, backups and the "Windows protected
-your PC" warning. To build it yourself on Windows: `./packaging/windows/build.ps1`.
+Download a zip from the latest [release](https://github.com/AMToniOwns/DuelLab/releases) (or from the
+latest successful [CI run](https://github.com/AMToniOwns/DuelLab/actions/workflows/ci.yml) under
+"Artifacts"), unzip it, and double-click the program. Nothing else to install: no Docker, .NET or
+database server. It opens in your browser at http://127.0.0.1:5180 and is reachable only from your own
+computer.
+
+| Computer | Zip | Program | Decks are kept in |
+| --- | --- | --- | --- |
+| Windows 10/11 (64-bit) | `DuelLab-windows.zip` | `DuelLab.exe` | `%LOCALAPPDATA%\DuelLab` |
+| Mac with Apple Silicon (M1 and later) | `DuelLab-macos-arm64.zip` | `DuelLab` | `~/Library/Application Support/DuelLab` |
+| Intel Mac | `DuelLab-macos-x64.zip` | `DuelLab` | `~/Library/Application Support/DuelLab` |
+
+The programs are not signed by Microsoft or Apple, so the first launch shows a warning ("Windows
+protected your PC", or on a Mac "Apple could not verify..."). `README.txt` in each zip explains how
+to open it anyway, and covers updates and backups. To build it yourself:
+`./packaging/windows/build.ps1` on Windows, `packaging/macos/build.sh arm64` (or `x64`) on a Mac.
 
 To publish a release, push a version tag (for example `git tag v1.0.0 && git push origin v1.0.0`);
 CI builds, tests and attaches the zip.
@@ -94,7 +103,7 @@ To work offline, use the bundled card fixture instead of YGOPRODeck: set
 | Suite | Command | Needs |
 | --- | --- | --- |
 | Domain, simulator, API integration (xUnit) | `dotnet test` | PostgreSQL (`DUELLAB_TEST_POSTGRES` to override) |
-| API integration on SQLite (the Windows app's database) | `DUELLAB_TEST_PROVIDER=sqlite dotnet test tests/DuelLab.Api.Tests` | – |
+| API integration on SQLite (the desktop app's database) | `DUELLAB_TEST_PROVIDER=sqlite dotnet test tests/DuelLab.Api.Tests` | – |
 | Frontend unit and component (Vitest) | `cd frontend/duellab-web && npx vitest run` | – |
 | End-to-end (Playwright, Chromium) | `cd frontend/duellab-web && npx playwright test` | .NET, PostgreSQL |
 
@@ -144,7 +153,7 @@ smoke-tests and publishes the Docker image to GHCR from `main`.
   - [0007 – Single-image deployment without accounts](docs/adr/0007-single-image-deployment-without-accounts.md)
   - [0008 – OR conditions, card targets and combo lines](docs/adr/0008-or-conditions-card-targets-and-combo-lines.md)
   - [0009 – Forbidden & Limited enforcement and history](docs/adr/0009-banlist-enforcement-and-history.md)
-  - [0010 – Windows desktop app on SQLite](docs/adr/0010-windows-desktop-app-on-sqlite.md)
+  - [0010 – Desktop app (Windows and macOS) on SQLite](docs/adr/0010-windows-desktop-app-on-sqlite.md)
 
 ## Credits
 
